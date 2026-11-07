@@ -40,6 +40,8 @@ export class LabelLayer {
   private labels: Label[] = [];
   private v = new THREE.Vector3();
   private toCam = new THREE.Vector3();
+  /** Hide every name (the find-it game would be too easy with them). */
+  hidden = false;
 
   constructor(private root: HTMLElement) {}
 
@@ -81,6 +83,7 @@ export class LabelLayer {
 
   /** Should this label be visible at camera distance d (ignoring overlaps)? */
   private wanted(l: Label, d: number): boolean {
+    if (this.hidden) return false;
     const zoom = d - 1; // height above the surface
     switch (l.kind) {
       case 'continent':

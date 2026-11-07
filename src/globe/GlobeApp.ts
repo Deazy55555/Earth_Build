@@ -68,7 +68,7 @@ export class GlobeApp {
   private frameTimes: number[] = [];
   private qualityChecked = 0;
   private pixelRatio: number;
-  private labels: LabelLayer;
+  readonly labels: LabelLayer;
   private detail!: DetailPatch;
   things!: ThingLayer;
   private props!: PropLayer;

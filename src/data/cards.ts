@@ -235,7 +235,7 @@ const NO_THE = new Set([
 ]);
 
 /** How to say it in a sentence: "the Eiffel Tower", "a giraffe", "emperor penguins". */
-function callIt(p: Place): string {
+export function callIt(p: Place): string {
   if (THE_PLURAL[p.id]) return THE_PLURAL[p.id];
   if (PLURAL.has(p.id)) return p.name.toLowerCase();
   if (p.kind === 'animal' || p.kind === 'sea' || p.kind === 'boat') {

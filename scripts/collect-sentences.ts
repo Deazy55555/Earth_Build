@@ -5,6 +5,7 @@ import { ROUTES } from '../src/data/routes';
 import { WATERS, CONTINENTS } from '../src/data/kid';
 import { PLACES } from '../src/data/places';
 import { splitSentences, hashSentence } from '../src/voice/sentences';
+import { allGameSentences } from '../src/game/content';
 
 const cards = [
   ...loadCountries().map(countryCard),
@@ -17,6 +18,7 @@ const cards = [
 
 const seen = new Map<string, string>();
 for (const c of cards) for (const s of [...splitSentences(c!.intro), ...splitSentences(c!.full)]) seen.set(hashSentence(s), s);
+for (const g of allGameSentences()) for (const s of splitSentences(g)) seen.set(hashSentence(s), s);
 const list = [...seen].map(([id, text]) => ({ id, text }));
 process.stdout.write(JSON.stringify(list, null, 0));
 console.error(`${list.length} sentences, ${list.reduce((a, b) => a + b.text.length, 0)} characters`);

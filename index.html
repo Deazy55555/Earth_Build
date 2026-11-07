@@ -28,6 +28,8 @@
         <button id="btn-zoom-out" class="round" aria-label="Zoom out">－</button>
         <button id="btn-home" class="round" aria-label="Back to start">🏠</button>
         <button id="btn-sound" class="round" aria-label="Talking on or off">🔊</button>
+        <button id="btn-play" class="round" aria-label="Play a game">🎮</button>
+        <button id="btn-book" class="round" aria-label="Sticker book">📒<span id="book-count" class="badge">0</span></button>
       </div>
 
       <div id="labels" aria-hidden="true"></div>
@@ -45,6 +47,64 @@
         <div id="card-rows"></div>
         <button id="card-ride" class="ride-btn hidden">🎢 Ride along!</button>
       </div>
+
+      <!-- games -->
+      <div id="play-menu" class="modal hidden">
+        <div class="sheet">
+          <button class="round small close" data-close="play-menu" aria-label="Close">✕</button>
+          <h2>Let's play!</h2>
+          <div class="levels">
+            <button class="pill level on" data-level="1">🐣 Easy</button>
+            <button class="pill level" data-level="2">🦁 Harder</button>
+          </div>
+          <div class="tiles">
+            <button id="start-hunt" class="tile"><span>🔍</span>Where in the World?</button>
+            <button id="start-quiz" class="tile"><span>🧠</span>Globe Quiz</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="hunt-bar" class="hidden">
+        <div id="hunt-find"><small>Find</small><span id="hunt-emoji"></span><b id="hunt-name"></b></div>
+        <div id="hunt-stars"></div>
+        <button id="hunt-say" class="round small" aria-label="Say it again">🔊</button>
+        <button id="hunt-quit" class="round small" aria-label="Stop playing">✕</button>
+      </div>
+
+      <div id="quiz" class="modal hidden">
+        <div class="sheet">
+          <button id="quiz-quit" class="round small close" aria-label="Stop playing">✕</button>
+          <div id="quiz-dots"></div>
+          <div id="quiz-emoji"></div>
+          <div id="quiz-q"></div>
+          <button id="quiz-say" class="round small" aria-label="Say it again">🔊</button>
+          <div id="quiz-options"></div>
+        </div>
+      </div>
+
+      <div id="result" class="modal hidden">
+        <div class="sheet center">
+          <div id="result-stars"></div>
+          <h2 id="result-text"></h2>
+          <div class="tiles two">
+            <button id="result-again" class="tile small">🔁 Play again</button>
+            <button id="result-done" class="tile small">🌍 Back to the globe</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="book" class="modal hidden">
+        <div class="sheet tall">
+          <button class="round small close" data-close="book" aria-label="Close">✕</button>
+          <h2>📒 My Sticker Book</h2>
+          <div id="book-tabs"></div>
+          <div id="book-count-line"></div>
+          <div id="book-grid"></div>
+          <button id="book-reset" class="reset">Hold to start over (for grown-ups)</button>
+        </div>
+      </div>
+
+      <div id="toast" class="hidden"><span id="toast-emoji"></span><div><small id="toast-kind"></small><b id="toast-name"></b></div></div>
 
       <div id="ride-hud" class="hidden">
         <div id="ride-title"></div>

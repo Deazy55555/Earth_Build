@@ -6,6 +6,10 @@ import { countryCard, capitalCard, waterCard, continentCard, thingCard, vehicleC
 import type { Vehicle } from './globe/vehicles';
 import { CONTINENTS } from './data/kid';
 import { say, stopSpeaking, speechEnabled, setSpeechEnabled } from './speech';
+import { Games } from './game/ui';
+import { vec3ToLonLat } from './globe/geo';
+import { collectFlag, collectRide, collectSticker } from './game/progress';
+import type { Place } from './data/places';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -53,6 +57,8 @@ function hideCard() {
 }
 
 function openCountry(c: Country) {
+  if (games.hunting) return games.huntTap({ country: c });
+  collectFlag(c.id);
   app.select(c);
   showCard(countryCard(c));
   app.flyTo(c.centroid[0], c.centroid[1], Math.min(app.orbitDistance, app.distanceFor(c)));
@@ -61,6 +67,7 @@ function openCountry(c: Country) {
 const app = new GlobeApp($<HTMLCanvasElement>('globe'), $('labels'), {
   onCountryTap: openCountry,
   onVehicleTap(v) {
+    if (games.hunting) return;
     app.select(null);
     showCard(vehicleCard(v.route));
     currentVehicle = v;
@@ -70,12 +77,11 @@ const app = new GlobeApp($<HTMLCanvasElement>('globe'), $('labels'), {
     $('ride-hud').classList.add('hidden');
   },
   onThingTap(place) {
-    app.select(null);
-    showCard(thingCard(place));
-    if (place.anim === 'launch') app.things.launch(place.id);
-    app.flyTo(place.lon, place.lat, Math.min(app.orbitDistance, 1.6));
+    if (games.hunting) return games.huntTap({ place });
+    openThing(place);
   },
   onLabelTap(label) {
+    if (games.hunting) return;
     const ref = label.ref as { country?: Country; capital?: Country; water?: string; continent?: string };
     if (ref.country) return openCountry(ref.country);
     if (ref.capital) {
@@ -106,18 +112,39 @@ const app = new GlobeApp($<HTMLCanvasElement>('globe'), $('labels'), {
     }
   },
   onWaterTap(id) {
+    if (games.hunting) return games.huntTap({ water: id });
     const wc = waterCard(id);
     if (!wc) return hideCard();
     app.select(null);
     showCard(wc);
   },
-  onEmptyTap: hideCard,
+  onEmptyTap() {
+    if (!games.hunting) hideCard();
+  },
 });
+
+function openThing(place: Place) {
+  collectSticker(place.id);
+  app.select(null);
+  showCard(thingCard(place));
+  if (place.anim === 'launch') app.things.launch(place.id);
+  app.flyTo(place.lon, place.lat, Math.min(app.orbitDistance, 1.6));
+}
+
+function openVehicle(v: Vehicle) {
+  app.select(null);
+  showCard(vehicleCard(v.route));
+  currentVehicle = v;
+  const [lon, lat] = vec3ToLonLat(v.pos.clone().normalize());
+  app.flyTo(lon, lat, Math.min(app.orbitDistance, 1.7));
+}
+
+const games = new Games(app, { hideCard, openThing, openCountry, openVehicle });
 
 $('btn-zoom-in').addEventListener('click', () => app.zoomBy(0.6));
 $('btn-zoom-out').addEventListener('click', () => app.zoomBy(1.6));
 $('btn-home').addEventListener('click', () => {
-  hideCard();
+  if (!games.hunting) hideCard();
   app.goHome();
 });
 
@@ -145,6 +172,7 @@ $('card-ride').addEventListener('click', () => {
   $('ride-title').textContent = `${v.route.emoji} ${v.route.name}`;
   $('ride-hud').classList.remove('hidden');
   document.body.classList.add('riding');
+  collectRide(v.route.id);
   app.ride(v);
 });
 $('ride-speed').addEventListener('click', () => {
@@ -174,4 +202,5 @@ setTimeout(async () => {
 }, 60);
 
 // Exposed for testing in the browser console.
-(window as unknown as { earthToy: GlobeApp }).earthToy = app;
+(window as unknown as { earthToy: GlobeApp; earthGames: Games }).earthToy = app;
+(window as unknown as { earthGames: Games }).earthGames = games;

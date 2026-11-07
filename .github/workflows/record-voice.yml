@@ -4,7 +4,7 @@ name: Record voice
 on:
   push:
     branches: [main]
-    paths: ['src/data/**', 'src/voice/**', 'voice/config.json', 'scripts/record_voice.py', 'scripts/collect-sentences.ts']
+    paths: ['src/data/**', 'src/game/**', 'src/voice/**', 'voice/config.json', 'scripts/record_voice.py', 'scripts/collect-sentences.ts']
   workflow_dispatch:
 
 permissions:

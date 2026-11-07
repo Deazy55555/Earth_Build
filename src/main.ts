@@ -118,15 +118,14 @@ $('card-close').addEventListener('click', hideCard);
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 document.addEventListener('dblclick', (e) => e.preventDefault());
 
-// Let the loading screen paint before the heavy build.
-requestAnimationFrame(() =>
-  setTimeout(async () => {
-    await document.fonts?.ready;
-    app.build();
-    app.start();
-    requestAnimationFrame(() => $('loading').classList.add('done'));
-  }, 30),
-);
+// Let the loading screen paint before the heavy build. (A plain timer, not
+// requestAnimationFrame, so the build still happens if the app is opened in the background.)
+setTimeout(async () => {
+  await document.fonts?.ready;
+  app.build();
+  app.start();
+  setTimeout(() => $('loading').classList.add('done'), 50);
+}, 60);
 
 // Exposed for testing in the browser console.
 (window as unknown as { earthToy: GlobeApp }).earthToy = app;

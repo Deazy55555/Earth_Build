@@ -230,7 +230,7 @@ export class GlobeApp {
   }
 
   select(c: Country | null) {
-    this.land.uniforms.uSelected.value = c ? c.index : -1;
+    if (this.land) this.land.uniforms.uSelected.value = c ? c.index : -1;
   }
 
   private setupTapping() {

@@ -193,9 +193,13 @@ export interface Terrain {
 /** Loads NASA's topography map (land elevation as greyscale). */
 export async function loadTopology(url: string): Promise<ImageData | null> {
   try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
+    // plain onload (img.decode() can stall while the page is in the background)
+    const img = await new Promise<HTMLImageElement>((ok, fail) => {
+      const i = new Image();
+      i.onload = () => ok(i);
+      i.onerror = fail;
+      i.src = url;
+    });
     const [c, ctx] = makeCanvas(img.width, img.height);
     ctx.drawImage(img, 0, 0);
     return ctx.getImageData(0, 0, c.width, c.height);

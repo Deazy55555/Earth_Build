@@ -30,14 +30,19 @@
         <button id="btn-sound" class="round" aria-label="Talking on or off">🔊</button>
       </div>
 
+      <div id="labels" aria-hidden="true"></div>
+
       <div id="card" class="hidden" role="dialog" aria-live="polite">
-        <div id="card-flag"></div>
-        <div id="card-body">
-          <div id="card-name"></div>
-          <div id="card-sub"></div>
+        <div id="card-head">
+          <div id="card-emoji"></div>
+          <div id="card-titles">
+            <div id="card-title"></div>
+            <div id="card-sub"></div>
+          </div>
+          <button id="card-speak" class="round small" aria-label="Read it to me">🔊</button>
+          <button id="card-close" class="round small" aria-label="Close">✕</button>
         </div>
-        <button id="card-speak" class="round small" aria-label="Say it again">🗣️</button>
-        <button id="card-close" class="round small" aria-label="Close">✕</button>
+        <div id="card-rows"></div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

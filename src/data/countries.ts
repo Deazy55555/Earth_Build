@@ -1,6 +1,7 @@
 import { feature, neighbors } from 'topojson-client';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import { geoBounds, geoCentroid, geoContains, geoArea } from 'd3-geo';
+import polylabel from 'polylabel';
 import type { Feature, Geometry } from 'geojson';
 import countries from 'i18n-iso-countries';
 import worldData from 'world-atlas/countries-50m.json';
@@ -9,11 +10,14 @@ import { COUNTRY_COLORS } from './palette';
 export interface Country {
   /** 1-based index, also written into the picking/highlight texture */
   index: number;
+  /** ISO numeric code (or the name when there is none) — key into facts.json */
+  id: string;
   name: string;
   flag: string;
   color: string;
   feature: Feature<Geometry>;
-  centroid: [number, number]; // [lon, lat]
+  /** best spot to write the name / fly to: middle of the main landmass [lon, lat] */
+  centroid: [number, number];
   bounds: [[number, number], [number, number]];
   /** spherical area in steradians — used to pick a nice zoom distance */
   area: number;
@@ -53,6 +57,7 @@ const NAME_FIXES: Record<string, string> = {
   'Heard I. and McDonald Is.': 'Heard and McDonald Islands',
   'Ashmore and Cartier Is.': 'Ashmore and Cartier Islands',
   'Antigua and Barb.': 'Antigua and Barbuda',
+  Vatican: 'Vatican City',
   'eSwatini': 'Eswatini',
   "Côte d'Ivoire": "Côte d'Ivoire (Ivory Coast)",
 };
@@ -80,6 +85,18 @@ function mainland(f: Feature<Geometry>): Feature<Geometry> {
   return best;
 }
 
+/** The point deepest inside the shape (better than a centroid for C-shaped or curvy countries). */
+function labelPoint(f: Feature<Geometry>): [number, number] {
+  if (f.geometry.type !== 'Polygon') return geoCentroid(f) as [number, number];
+  const ring0 = f.geometry.coordinates[0];
+  const midLat = ring0.reduce((a, p) => a + p[1], 0) / ring0.length;
+  const k = Math.max(0.2, Math.cos((midLat * Math.PI) / 180)); // squash longitude so distances are fair
+  const rings = f.geometry.coordinates.map((r) => r.map(([x, y]) => [x * k, y]));
+  const p = polylabel(rings, 0.05);
+  if (!Number.isFinite(p[0])) return geoCentroid(f) as [number, number];
+  return [p[0] / k, p[1]];
+}
+
 let cache: Country[] | null = null;
 
 export function loadCountries(): Country[] {
@@ -104,9 +121,10 @@ export function loadCountries(): Country[] {
     const id = geoms[i].id as string | undefined;
     const alpha2 = id ? countries.numericToAlpha2(id) : EXTRA_FLAGS[raw];
     const main = mainland(f as Feature<Geometry>);
-    const c = geoCentroid(main) as [number, number];
+    const c = labelPoint(main);
     return {
       index: i + 1,
+      id: (geoms[i].id as string | undefined) ?? raw,
       name: NAME_FIXES[raw] ?? raw,
       flag: flagEmoji(alpha2),
       color: COUNTRY_COLORS[colorIdx[i]],

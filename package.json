@@ -11,6 +11,7 @@
   "dependencies": {
     "d3-geo": "^3.1.1",
     "i18n-iso-countries": "^7.14.0",
+    "polylabel": "^2.1.0",
     "three": "^0.187.0",
     "topojson-client": "^3.1.0",
     "world-atlas": "^2.0.2"
@@ -21,6 +22,7 @@
     "@types/topojson-client": "^3.1.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
-    "vite-plugin-pwa": "^2.0.0"
+    "vite-plugin-pwa": "^2.0.0",
+    "world-countries": "^5.1.0"
   }
 }

@@ -1,26 +1,43 @@
 import './style.css';
 import { GlobeApp } from './globe/GlobeApp';
 import type { Country } from './data/countries';
+import { countryCard, capitalCard, waterCard, continentCard, factsFor, type Card } from './data/cards';
+import { CONTINENTS } from './data/kid';
 import { say, speechEnabled, setSpeechEnabled } from './speech';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
-const CHEERS = ['You found it!', 'Great find!', 'Nice tap!', 'Hello there!', 'Wow!'];
-
 const card = $('card');
-let current: Country | null = null;
+let current: Card | null = null;
 
-function phrase(c: Country) {
-  return c.name === 'Antarctica' ? 'This is Antarctica. Brrr, it is icy!' : `This is ${c.name}!`;
-}
-
-function showCard(c: Country) {
+function showCard(c: Card) {
   current = c;
-  $('card-flag').textContent = c.flag;
-  $('card-name').textContent = c.name;
-  $('card-sub').textContent = CHEERS[Math.floor(Math.random() * CHEERS.length)];
+  $('card-emoji').textContent = c.emoji;
+  $('card-title').textContent = c.title;
+  $('card-sub').textContent = c.subtitle;
+  const rows = $('card-rows');
+  rows.replaceChildren(
+    ...c.rows.map((r) => {
+      const el = document.createElement('div');
+      el.className = r.icon === '⭐' ? 'row fact' : 'row';
+      const icon = document.createElement('div');
+      icon.className = 'row-icon';
+      icon.textContent = r.icon;
+      const body = document.createElement('div');
+      const label = document.createElement('div');
+      label.className = 'row-label';
+      label.textContent = r.label;
+      const text = document.createElement('div');
+      text.className = 'row-text';
+      text.textContent = r.text;
+      body.append(label, text);
+      el.append(icon, body);
+      return el;
+    }),
+  );
+  rows.scrollTop = 0;
   card.classList.remove('hidden');
-  say(phrase(c));
+  say(c.intro);
 }
 
 function hideCard() {
@@ -29,11 +46,49 @@ function hideCard() {
   app.select(null);
 }
 
-const app = new GlobeApp($<HTMLCanvasElement>('globe'), {
-  onCountryTap(c) {
-    app.select(c);
-    showCard(c);
-    app.flyTo(c.centroid[0], c.centroid[1], Math.min(app.camera.position.length(), app.distanceFor(c)));
+function openCountry(c: Country) {
+  app.select(c);
+  showCard(countryCard(c));
+  app.flyTo(c.centroid[0], c.centroid[1], Math.min(app.orbitDistance, app.distanceFor(c)));
+}
+
+const app = new GlobeApp($<HTMLCanvasElement>('globe'), $('labels'), {
+  onCountryTap: openCountry,
+  onLabelTap(label) {
+    const ref = label.ref as { country?: Country; capital?: Country; water?: string; continent?: string };
+    if (ref.country) return openCountry(ref.country);
+    if (ref.capital) {
+      const cap = factsFor(ref.capital)?.capital;
+      const cc = capitalCard(ref.capital);
+      if (!cap || !cc) return;
+      app.select(ref.capital);
+      showCard(cc);
+      app.flyTo(cap.lon, cap.lat, Math.min(app.orbitDistance, 1.45));
+      return;
+    }
+    if (ref.water) {
+      const wc = waterCard(ref.water);
+      if (wc) {
+        app.select(null);
+        showCard(wc);
+      }
+      return;
+    }
+    if (ref.continent) {
+      const cc = continentCard(ref.continent);
+      const info = CONTINENTS[ref.continent];
+      if (cc) {
+        app.select(null);
+        showCard(cc);
+        app.flyTo(info.lon, info.lat, Math.max(app.orbitDistance, 2.6));
+      }
+    }
+  },
+  onWaterTap(id) {
+    const wc = waterCard(id);
+    if (!wc) return hideCard();
+    app.select(null);
+    showCard(wc);
   },
   onEmptyTap: hideCard,
 });
@@ -56,7 +111,7 @@ soundBtn.addEventListener('click', () => {
   paintSound();
 });
 
-$('card-speak').addEventListener('click', () => current && say(phrase(current), true));
+$('card-speak').addEventListener('click', () => current && say(current.full, true));
 $('card-close').addEventListener('click', hideCard);
 
 // Block iOS Safari's pinch-to-zoom-the-page so pinches go to the globe.
@@ -65,7 +120,8 @@ document.addEventListener('dblclick', (e) => e.preventDefault());
 
 // Let the loading screen paint before the heavy build.
 requestAnimationFrame(() =>
-  setTimeout(() => {
+  setTimeout(async () => {
+    await document.fonts?.ready;
     app.build();
     app.start();
     requestAnimationFrame(() => $('loading').classList.add('done'));

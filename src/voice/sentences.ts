@@ -1,9 +1,9 @@
 /** Shared between the app and the recording script, so both cut text the same way. */
 
-/** Split read-aloud text into sentences (not after "St." / "Mt."). */
+/** Split read-aloud text into sentences (not after "St." / "Mt." or initials like "T. rex" / "D.C."). */
 export function splitSentences(text: string): string[] {
   return text
-    .split(/(?<!\b(?:St|Mt|Dr|Mr|Mrs|Ms)\.)(?<=[.!?])\s+/)
+    .split(/(?<!\b(?:St|Mt|Dr|Mr|Mrs|Ms|[A-Z])\.)(?<=[.!?])\s+/)
     .map((s) => s.trim())
     .filter(Boolean);
 }

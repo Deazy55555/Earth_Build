@@ -1,0 +1,275 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { loadCountries, countryAt, type Country } from '../data/countries';
+import { buildColorTexture, buildIdTexture, buildMaskTexture } from './mapTextures';
+import { createLand, createAtmosphere, LAND_HEIGHT, LAND_LIFT, type Land } from './earth';
+import { createOcean } from './ocean';
+import { createClouds, createStars } from './sky';
+import { latLonToVec3, vec3ToLonLat } from './geo';
+
+const MIN_DIST = 1.18;
+const MAX_DIST = 4.2;
+const HOME_DIST = 3.55;
+const LIGHT_OFFSET = new THREE.Vector3(-0.55, 0.65, 1).normalize();
+
+interface Flight {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  fromDist: number;
+  toDist: number;
+  t: number;
+  duration: number;
+}
+
+export interface GlobeEvents {
+  onCountryTap?: (c: Country) => void;
+  onEmptyTap?: () => void;
+}
+
+export class GlobeApp {
+  readonly renderer: THREE.WebGLRenderer;
+  readonly scene = new THREE.Scene();
+  readonly camera: THREE.PerspectiveCamera;
+  readonly controls: OrbitControls;
+  private timer = new THREE.Timer();
+  private sun = new THREE.DirectionalLight("#fff4e0", 2.1);
+  private land!: Land;
+  private ocean!: ReturnType<typeof createOcean>;
+  private clouds!: THREE.Group;
+  private stars!: THREE.Points;
+  private flight: Flight | null = null;
+  private zoomGoal: number | null = null;
+  private lastInteraction = performance.now();
+  private pickSphere = new THREE.Sphere(new THREE.Vector3(), 1 + LAND_LIFT + LAND_HEIGHT * 0.5);
+  private raycaster = new THREE.Raycaster();
+  private frameTimes: number[] = [];
+  private qualityChecked = 0;
+  private pixelRatio: number;
+
+  constructor(private canvas: HTMLCanvasElement, private events: GlobeEvents = {}) {
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    this.renderer.setPixelRatio(this.pixelRatio);
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.setClearColor(0x000000, 0);
+
+    this.camera = new THREE.PerspectiveCamera(40, 1, 0.01, 200);
+    this.camera.position.copy(latLonToVec3(20, 10, HOME_DIST));
+
+    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls.enablePan = false;
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.07;
+    this.controls.minDistance = MIN_DIST;
+    this.controls.maxDistance = MAX_DIST;
+    this.controls.zoomSpeed = 0.9;
+    this.controls.autoRotateSpeed = 0.35;
+    this.controls.addEventListener('start', () => this.touched());
+
+    this.scene.add(new THREE.HemisphereLight("#eaf5ff", "#9a8cc4", 1.7));
+    this.scene.add(this.sun);
+
+    window.addEventListener('resize', () => this.resize());
+    this.resize();
+    this.setupTapping();
+  }
+
+  /** Builds textures and meshes. Heavy-ish, so call after the loading screen has painted. */
+  build() {
+    const list = loadCountries();
+    const color = buildColorTexture(list);
+    const ids = buildIdTexture(list);
+    const mask = buildMaskTexture(list);
+    color.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+
+    this.ocean = createOcean(mask);
+    this.land = createLand(color, mask, ids);
+    this.clouds = createClouds();
+    this.stars = createStars();
+    this.scene.add(this.ocean, this.land.mesh, createAtmosphere(), this.clouds, this.stars);
+    (this.stars.material as THREE.ShaderMaterial).uniforms.uPixelRatio.value = this.pixelRatio;
+
+    // Upload everything to the GPU now rather than on the first frame.
+    this.renderer.compile(this.scene, this.camera);
+  }
+
+  start() {
+    this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  // ---------------------------------------------------------------- controls
+
+  private touched() {
+    this.lastInteraction = performance.now();
+    this.controls.autoRotate = false;
+    this.flight = null;
+    this.zoomGoal = null;
+  }
+
+  private distance() {
+    return this.camera.position.length();
+  }
+
+  zoomBy(factor: number) {
+    this.touched();
+    const base = this.zoomGoal ?? this.distance();
+    this.zoomGoal = THREE.MathUtils.clamp(1 + (base - 1) * factor, MIN_DIST, MAX_DIST);
+  }
+
+  goHome() {
+    const dir = this.camera.position.clone().normalize();
+    const [lon] = vec3ToLonLat(dir);
+    this.flyTo(lon, 20, HOME_DIST);
+  }
+
+  /** Smoothly swing the camera over a spot on the globe. */
+  flyTo(lon: number, lat: number, dist?: number) {
+    this.touched();
+    const from = this.camera.position.clone().normalize();
+    const to = latLonToVec3(lat, lon, 1).normalize();
+    const angle = from.angleTo(to);
+    this.flight = {
+      from,
+      to,
+      fromDist: this.distance(),
+      toDist: dist ?? this.distance(),
+      t: 0,
+      duration: 0.7 + angle * 0.45,
+    };
+  }
+
+  /** A comfortable viewing distance for a country of this size. */
+  distanceFor(c: Country) {
+    const radius = Math.sqrt(c.area / Math.PI); // angular radius in radians
+    return THREE.MathUtils.clamp(1 + radius * 6, 1.65, 3.2);
+  }
+
+  select(c: Country | null) {
+    this.land.uniforms.uSelected.value = c ? c.index : -1;
+  }
+
+  private setupTapping() {
+    let down: { x: number; y: number; t: number } | null = null;
+    let pointers = 0;
+    this.canvas.addEventListener('pointerdown', (e) => {
+      pointers++;
+      down = pointers === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+    });
+    const up = (e: PointerEvent) => {
+      pointers = Math.max(0, pointers - 1);
+      if (!down) return;
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      const quick = performance.now() - down.t < 600;
+      down = null;
+      if (moved < 12 && quick) this.handleTap(e.clientX, e.clientY);
+    };
+    this.canvas.addEventListener('pointerup', up);
+    this.canvas.addEventListener('pointercancel', () => {
+      pointers = Math.max(0, pointers - 1);
+      down = null;
+    });
+  }
+
+  private handleTap(x: number, y: number) {
+    const rect = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.raycaster.ray.intersectSphere(this.pickSphere, new THREE.Vector3());
+    if (!hit) return this.events.onEmptyTap?.();
+    const [lon, lat] = vec3ToLonLat(hit);
+    const c = countryAt(lon, lat);
+    if (c) this.events.onCountryTap?.(c);
+    else this.events.onEmptyTap?.();
+  }
+
+  // ---------------------------------------------------------------- loop
+
+  private resize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    // keep the whole globe in view on tall (portrait) screens
+    this.camera.fov = w < h ? 40 * Math.min(1.5, h / w) : 40;
+    this.camera.updateProjectionMatrix();
+  }
+
+  private frame() {
+    this.timer.update();
+    const dt = Math.min(this.timer.getDelta(), 0.1);
+    const t = this.timer.getElapsed();
+
+    this.updateFlight(dt);
+    this.updateZoom(dt);
+
+    // Slow spin when nobody has touched it for a while.
+    if (!this.flight && performance.now() - this.lastInteraction > 12000) this.controls.autoRotate = true;
+
+    // Turning should feel the same whether zoomed in or out.
+    const d = this.distance();
+    this.controls.rotateSpeed = THREE.MathUtils.clamp((d - 1) * 0.42, 0.04, 0.9);
+    this.controls.update(dt);
+
+    // Sun hangs over the camera's shoulder so the side you look at is always sunny.
+    const lightDir = LIGHT_OFFSET.clone().applyQuaternion(this.camera.quaternion);
+    this.sun.position.copy(lightDir).multiplyScalar(10);
+    this.ocean.material.uniforms.uLightDir.value.copy(lightDir);
+    this.ocean.material.uniforms.uTime.value = t;
+    this.land.uniforms.uTime.value = t;
+    (this.stars.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
+
+    // Clouds drift, and fade away when you zoom in close.
+    this.clouds.rotation.y += dt * 0.006;
+    const cloudMat = this.clouds.userData.material as THREE.MeshStandardMaterial;
+    cloudMat.opacity = THREE.MathUtils.smoothstep(d, 1.6, 2.0);
+    this.clouds.visible = cloudMat.opacity > 0.01;
+
+    this.renderer.render(this.scene, this.camera);
+    this.checkQuality(dt);
+  }
+
+  private updateFlight(dt: number) {
+    const f = this.flight;
+    if (!f) return;
+    f.t = Math.min(1, f.t + dt / f.duration);
+    const k = f.t < 0.5 ? 4 * f.t ** 3 : 1 - (-2 * f.t + 2) ** 3 / 2; // ease in-out
+    const dir = new THREE.Vector3().copy(f.from).lerp(f.to, k);
+    // proper great-circle swing
+    const q = new THREE.Quaternion().setFromUnitVectors(f.from, f.to);
+    const qk = new THREE.Quaternion().slerp(q, k);
+    dir.copy(f.from).applyQuaternion(qk);
+    // lift up a little in the middle of long trips so it feels like a hop
+    const hop = Math.sin(Math.PI * k) * Math.min(0.6, f.from.angleTo(f.to) * 0.35);
+    const dist = THREE.MathUtils.lerp(f.fromDist, f.toDist, k) + hop;
+    this.camera.position.copy(dir.multiplyScalar(dist));
+    if (f.t >= 1) this.flight = null;
+  }
+
+  private updateZoom(dt: number) {
+    if (this.zoomGoal === null) return;
+    const d = this.distance();
+    const next = THREE.MathUtils.damp(d, this.zoomGoal, 6, dt);
+    this.camera.position.setLength(next);
+    if (Math.abs(next - this.zoomGoal) < 0.002) this.zoomGoal = null;
+  }
+
+  /** If the tablet is struggling, drop resolution a notch (twice at most). */
+  private checkQuality(dt: number) {
+    if (this.qualityChecked >= 2) return;
+    this.frameTimes.push(dt);
+    if (this.frameTimes.length < 120) return;
+    const sorted = [...this.frameTimes].sort((a, b) => a - b);
+    const median = sorted[sorted.length >> 1];
+    this.frameTimes = [];
+    if (median > 1 / 45 && this.pixelRatio > 1) {
+      this.pixelRatio = Math.max(1, this.pixelRatio - 0.5);
+      this.renderer.setPixelRatio(this.pixelRatio);
+      this.resize();
+      (this.stars.material as THREE.ShaderMaterial).uniforms.uPixelRatio.value = this.pixelRatio;
+      this.qualityChecked++;
+    } else {
+      this.qualityChecked = 2;
+    }
+  }
+}

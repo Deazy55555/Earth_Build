@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Earth Toy" />
+    <meta name="theme-color" content="#0b1030" />
+    <link rel="apple-touch-icon" href="./icon-180.png" />
+    <link rel="icon" href="./icon-192.png" />
+    <title>Earth Toy</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="globe"></canvas>
+
+      <div id="loading">
+        <div class="spinner">🌍</div>
+        <div>Getting the world ready…</div>
+      </div>
+
+      <header id="title">Earth Toy</header>
+
+      <div id="side-buttons">
+        <button id="btn-zoom-in" class="round" aria-label="Zoom in">＋</button>
+        <button id="btn-zoom-out" class="round" aria-label="Zoom out">－</button>
+        <button id="btn-home" class="round" aria-label="Back to start">🏠</button>
+        <button id="btn-sound" class="round" aria-label="Talking on or off">🔊</button>
+      </div>
+
+      <div id="card" class="hidden" role="dialog" aria-live="polite">
+        <div id="card-flag"></div>
+        <div id="card-body">
+          <div id="card-name"></div>
+          <div id="card-sub"></div>
+        </div>
+        <button id="card-speak" class="round small" aria-label="Say it again">🗣️</button>
+        <button id="card-close" class="round small" aria-label="Close">✕</button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

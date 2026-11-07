@@ -59,6 +59,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx scripts/collect-sentences.ts > voice/sentences.json
       - uses: actions/download-artifact@v4
         with:
           pattern: voice-*
@@ -68,10 +74,10 @@ jobs:
         run: |
           mkdir -p public/voice
           if [ -d new-voice ] && [ -n "$(ls -A new-voice)" ]; then cp new-voice/*.mp3 public/voice/; fi
-          node scripts/voice-index.mjs
+          node scripts/voice-index.mjs --prune
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/voice
+          git add -A public/voice
           if git diff --cached --quiet; then echo "nothing new"; exit 0; fi
           git commit -m "Record read-aloud voice ($(ls new-voice 2>/dev/null | wc -l) new clips)"
           git pull --rebase origin main

@@ -150,7 +150,7 @@ export const EXTRAS: Record<string, Extra> = {
   BO: { food: 'Salteñas — juicy pastries', fact: 'Bolivia has the biggest salt flat in the world. After rain it looks like a giant mirror!' },
   GB: { food: 'Fish and chips', fact: 'Big Ben is the name of the giant bell inside the famous clock tower in London.' },
   IE: { food: 'Irish stew', fact: 'Ireland is called the Emerald Isle because it is so green!' },
-  FR: { food: 'Crêpes and croissants', fact: 'The Eiffel Tower in Paris is about 330 meters tall — as tall as an 81-story building!' },
+  FR: { food: 'Crêpes and croissants', fact: 'The Eiffel Tower in Paris is about 1,080 feet tall — as tall as an 81-story building!' },
   ES: { food: 'Paella — a big pan of rice', fact: 'In the town of Buñol, people throw tomatoes at each other in a giant food fight!' },
   PT: { food: 'Pastéis de nata — little custard tarts', fact: 'Portugal makes about half of all the cork in the world. Cork comes from tree bark!' },
   IT: { food: 'Pizza and pasta', fact: 'The Leaning Tower of Pisa leans because the ground under it is too soft!' },
@@ -188,7 +188,7 @@ export const EXTRAS: Record<string, Extra> = {
   CD: { food: 'Fufu', fact: 'The Congo River is one of the deepest rivers in the world!' },
   IN: { food: 'Curry and roti', fact: 'India has more people than any other country in the world!' },
   CN: { food: 'Dumplings and noodles', fact: 'Giant pandas live in the wild only in China.' },
-  JP: { food: 'Sushi', fact: 'Japan has bullet trains that zoom along at more than 300 km per hour!' },
+  JP: { food: 'Sushi', fact: 'Japan has bullet trains that zoom along at nearly 200 miles per hour!' },
   KR: { food: 'Kimchi — spicy pickled cabbage', fact: 'Korea has its own alphabet, called Hangul, made almost 600 years ago.' },
   TW: { food: 'Bubble tea', fact: 'Bubble tea was invented in Taiwan!' },
   MN: { food: 'Buuz — dumplings', fact: 'Many families in Mongolia live in round tents called gers.' },
@@ -230,12 +230,12 @@ export const CAPITAL_FACTS: Record<string, string> = {
   RU: 'Moscow has a famous big square called Red Square.',
   KE: 'Nairobi has a national park with lions right next to the city!',
   GR: 'Athens has the Acropolis, an old hilltop full of temples.',
-  NL: 'Amsterdam has more than 100 kilometers of canals.',
+  NL: 'Amsterdam has more than 60 miles of canals.',
   NZ: 'Wellington is famous for being very windy!',
   KR: 'Seoul has old palaces right next to shiny skyscrapers.',
   TH: 'Bangkok has floating markets where people sell food from boats.',
   CA: 'Ottawa has a canal that turns into a giant ice-skating rink in winter!',
-  MX: 'Mexico City is more than 2,000 meters up in the mountains.',
+  MX: 'Mexico City is more than 7,000 feet up in the mountains.',
   IN: 'New Delhi has the India Gate, a giant stone arch.',
   DE: "Berlin's Brandenburg Gate is more than 200 years old.",
 };
@@ -248,8 +248,8 @@ export interface Place {
 }
 
 export const WATERS: Record<string, Place> = {
-  pacific: { name: 'Pacific Ocean', emoji: '🌊', kind: 'The biggest ocean', fact: "The Pacific is the biggest and deepest ocean. Its deepest spot, the Mariana Trench, is about 11 kilometers deep!" },
-  atlantic: { name: 'Atlantic Ocean', emoji: '🌊', kind: 'The second-biggest ocean', fact: 'The Atlantic Ocean is slowly getting wider — by a few centimeters every year!' },
+  pacific: { name: 'Pacific Ocean', emoji: '🌊', kind: 'The biggest ocean', fact: "The Pacific is the biggest and deepest ocean. Its deepest spot, the Mariana Trench, is almost 7 miles deep!" },
+  atlantic: { name: 'Atlantic Ocean', emoji: '🌊', kind: 'The second-biggest ocean', fact: 'The Atlantic Ocean is slowly getting wider — by about an inch every year!' },
   indian: { name: 'Indian Ocean', emoji: '🌊', kind: 'The warmest ocean', fact: 'The Indian Ocean is the warmest ocean in the world.' },
   southern: { name: 'Southern Ocean', emoji: '🐧', kind: 'The ocean around Antarctica', fact: 'The Southern Ocean goes all the way around Antarctica. Penguins swim in its icy water!' },
   arctic: { name: 'Arctic Ocean', emoji: '🐻‍❄️', kind: 'The smallest, coldest ocean', fact: 'Much of the Arctic Ocean is covered in ice, and polar bears hunt on the ice.' },

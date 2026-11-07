@@ -2,6 +2,9 @@ import './style.css';
 import { GlobeApp } from './globe/GlobeApp';
 import { loadTopology } from './globe/mapTextures';
 import type { Country } from './data/countries';
+import { loadCountries } from './data/countries';
+import { USA_ID, type UsState } from './data/states';
+import { stateCard, stateCapitalCard } from './data/cards';
 import { countryCard, capitalCard, waterCard, continentCard, thingCard, vehicleCard, factsFor, type Card } from './data/cards';
 import type { Vehicle } from './globe/vehicles';
 import { CONTINENTS } from './data/kid';
@@ -57,17 +60,36 @@ function hideCard() {
 }
 
 function openCountry(c: Country) {
-  if (games.hunting) return games.huntTap({ country: c });
   collectFlag(c.id);
   app.select(c);
   showCard(countryCard(c));
   app.flyTo(c.centroid[0], c.centroid[1], Math.min(app.orbitDistance, app.distanceFor(c)));
 }
 
+function openState(s: UsState) {
+  app.selectState(s);
+  showCard(stateCard(s));
+  const r = Math.sqrt(s.area / Math.PI);
+  app.flyTo(s.centroid[0], s.centroid[1], Math.min(app.orbitDistance, Math.max(1.4, Math.min(2.2, 1 + r * 8))));
+}
+
 const app = new GlobeApp($<HTMLCanvasElement>('globe'), $('labels'), {
-  onCountryTap: openCountry,
+  onCountryTap(c) {
+    if (games.globeTap({ country: c })) return;
+    openCountry(c);
+  },
+  onStateTap(s) {
+    if (games.globeTap({ state: s })) return;
+    // from far away a tap means the whole country; closer in, the state
+    if (app.orbitDistance > 2.6) {
+      const us = loadCountries().find((c) => c.id === USA_ID);
+      if (us) openCountry(us);
+      return;
+    }
+    openState(s);
+  },
   onVehicleTap(v) {
-    if (games.hunting) return;
+    if (games.globeTap({ other: true })) return;
     app.select(null);
     showCard(vehicleCard(v.route));
     currentVehicle = v;
@@ -77,13 +99,21 @@ const app = new GlobeApp($<HTMLCanvasElement>('globe'), $('labels'), {
     $('ride-hud').classList.add('hidden');
   },
   onThingTap(place) {
-    if (games.hunting) return games.huntTap({ place });
+    if (games.globeTap({ place })) return;
     openThing(place);
   },
   onLabelTap(label) {
-    if (games.hunting) return;
-    const ref = label.ref as { country?: Country; capital?: Country; water?: string; continent?: string };
+    if (games.globeTap({ other: true })) return;
+    const ref = label.ref as { country?: Country; capital?: Country; water?: string; continent?: string; state?: UsState; stateCapital?: UsState };
     if (ref.country) return openCountry(ref.country);
+    if (ref.state) return openState(ref.state);
+    if (ref.stateCapital) {
+      const st = ref.stateCapital;
+      app.selectState(st);
+      showCard(stateCapitalCard(st));
+      app.flyTo(st.at[1], st.at[0], Math.min(app.orbitDistance, 1.45));
+      return;
+    }
     if (ref.capital) {
       const cap = factsFor(ref.capital)?.capital;
       const cc = capitalCard(ref.capital);
@@ -112,14 +142,14 @@ const app = new GlobeApp($<HTMLCanvasElement>('globe'), $('labels'), {
     }
   },
   onWaterTap(id) {
-    if (games.hunting) return games.huntTap({ water: id });
+    if (games.globeTap({ water: id })) return;
     const wc = waterCard(id);
     if (!wc) return hideCard();
     app.select(null);
     showCard(wc);
   },
   onEmptyTap() {
-    if (!games.hunting) hideCard();
+    if (!games.playing) hideCard();
   },
 });
 
@@ -139,12 +169,12 @@ function openVehicle(v: Vehicle) {
   app.flyTo(lon, lat, Math.min(app.orbitDistance, 1.7));
 }
 
-const games = new Games(app, { hideCard, openThing, openCountry, openVehicle });
+const games = new Games(app, { hideCard, openThing, openCountry, openVehicle, openState });
 
 $('btn-zoom-in').addEventListener('click', () => app.zoomBy(0.6));
 $('btn-zoom-out').addEventListener('click', () => app.zoomBy(1.6));
 $('btn-home').addEventListener('click', () => {
-  if (!games.hunting) hideCard();
+  if (!games.playing) hideCard();
   app.goHome();
 });
 

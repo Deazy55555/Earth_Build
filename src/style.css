@@ -185,6 +185,31 @@ button.round.off { opacity: 0.55; }
   gap: 5px;
   -webkit-text-stroke: 3px rgba(25, 32, 80, 0.6);
 }
+.label-state {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #fffbea;
+  -webkit-text-stroke: 3px rgba(60, 40, 90, 0.55);
+}
+.label-statecap {
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-text-stroke: 3px rgba(25, 32, 80, 0.6);
+}
+.label-statecap .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ffcf3f;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  flex: none;
+}
 .label-capital .dot {
   width: 10px;
   height: 10px;
@@ -312,7 +337,7 @@ body.riding #side-buttons, body.riding #title { display: none; }
 .modal.hidden, #hunt-bar.hidden, #toast.hidden { display: none; }
 .sheet {
   position: relative;
-  width: min(620px, 100%);
+  width: min(680px, 100%);
   max-height: 100%;
   overflow: auto;
   background: var(--card-bg);
@@ -328,7 +353,8 @@ body.riding #side-buttons, body.riding #title { display: none; }
 @keyframes pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .levels { display: flex; gap: 10px; margin-bottom: 18px; }
 .pill.level.on { background: var(--accent); color: #fff; box-shadow: 0 4px 0 #d8692a; }
-.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+.tile small { display: block; margin-top: 6px; font-size: 14px; font-weight: 700; color: #8a7f6a; }
 .tile {
   border: none;
   border-radius: 26px;
@@ -401,7 +427,7 @@ body.hunting #title { display: none; }
 
 /* results */
 #result-stars { font-size: 56px; letter-spacing: 6px; margin: 6px 0 10px; }
-.tiles.two { margin-top: 18px; }
+.tiles.two { margin-top: 18px; grid-template-columns: 1fr 1fr; }
 
 /* sticker book */
 #book-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -480,3 +506,4 @@ body.hunting #title { display: none; }
   .opt { font-size: 20px; }
   #hunt-find { font-size: 22px; }
 }
+#book-tabs .pill { font-size: 16px; padding: 8px 13px; }

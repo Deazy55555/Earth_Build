@@ -70,7 +70,7 @@ function flagEmoji(alpha2?: string): string {
 }
 
 /** The biggest piece of a country (so France centres on France, not between it and French Guiana). */
-function mainland(f: Feature<Geometry>): Feature<Geometry> {
+export function mainland(f: Feature<Geometry>): Feature<Geometry> {
   if (f.geometry.type !== 'MultiPolygon') return f;
   let best: Feature<Geometry> = f;
   let bestArea = -1;
@@ -86,7 +86,7 @@ function mainland(f: Feature<Geometry>): Feature<Geometry> {
 }
 
 /** The point deepest inside the shape (better than a centroid for C-shaped or curvy countries). */
-function labelPoint(f: Feature<Geometry>): [number, number] {
+export function labelPoint(f: Feature<Geometry>): [number, number] {
   if (f.geometry.type !== 'Polygon') return geoCentroid(f) as [number, number];
   const ring0 = f.geometry.coordinates[0];
   const midLat = ring0.reduce((a, p) => a + p[1], 0) / ring0.length;

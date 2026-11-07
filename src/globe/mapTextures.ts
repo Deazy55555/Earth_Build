@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { geoEquirectangular, geoPath } from 'd3-geo';
 import type { Country } from '../data/countries';
 import { ICE } from '../data/palette';
-import { feature } from 'topojson-client';
+import { feature, mesh } from 'topojson-client';
+import { loadStates, statesTopology, USA_ID } from '../data/states';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
 import rivers50 from '../data/geo/rivers50.json';
@@ -56,6 +57,26 @@ export function buildColorTexture(list: Country[], w = 4096, h = 2048): THREE.Ca
     ctx.fill();
   }
 
+  // the 50 states, each in its own colour, trimmed to the coastline of the world map
+  const us = list.find((c) => c.id === USA_ID);
+  if (us) {
+    ctx.save();
+    ctx.beginPath();
+    path(us.feature);
+    ctx.clip();
+    for (const st of loadStates()) {
+      ctx.fillStyle = st.color;
+      ctx.strokeStyle = st.color; // a fat edge fills any gaps along the coast
+      ctx.lineWidth = 6 * s;
+      ctx.beginPath();
+      path(st.feature);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // then the inside borders on top (drawn again after the rivers, below)
+    ctx.restore();
+  }
+
   // big lakes and rivers
   ctx.fillStyle = '#4aa6e6';
   for (const f of featuresOf(lakes50)) {
@@ -84,6 +105,21 @@ export function buildColorTexture(list: Country[], w = 4096, h = 2048): THREE.Ca
     ctx.stroke();
   }
 
+  // thinner lines between the states
+  if (us) {
+    const topo = statesTopology();
+    ctx.save();
+    ctx.beginPath();
+    path(us.feature);
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1.0 * s;
+    ctx.beginPath();
+    path(mesh(topo, topo.objects.states, (a, b) => a !== b));
+    ctx.stroke();
+    ctx.restore();
+  }
+
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
@@ -92,7 +128,7 @@ export function buildColorTexture(list: Country[], w = 4096, h = 2048): THREE.Ca
   return tex;
 }
 
-/** Each country painted with its index in the red channel — used for the tap highlight. */
+/** Each country painted with its index in the red channel (and each US state in green) — used for the tap highlight. */
 export function buildIdTexture(list: Country[], w = 4096, h = 2048): THREE.CanvasTexture {
   const [canvas, ctx] = makeCanvas(w, h);
   const path = geoPath(projectionFor(w, h), ctx);
@@ -103,6 +139,22 @@ export function buildIdTexture(list: Country[], w = 4096, h = 2048): THREE.Canva
     ctx.beginPath();
     path(c.feature);
     ctx.fill();
+  }
+  const us = list.find((c) => c.id === USA_ID);
+  if (us) {
+    ctx.save();
+    ctx.beginPath();
+    path(us.feature);
+    ctx.clip();
+    for (const st of loadStates()) {
+      ctx.fillStyle = ctx.strokeStyle = `rgb(${us.index},${st.index},0)`;
+      ctx.lineWidth = 6 * (w / 4096);
+      ctx.beginPath();
+      path(st.feature);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.NoColorSpace;

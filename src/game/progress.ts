@@ -6,6 +6,7 @@ export interface Progress {
   stickers: string[]; // place ids (animals, landmarks, …)
   rides: string[]; // route ids ridden
   flags: string[]; // country ids tapped
+  states: string[]; // US states found in the 50 States game (postal codes)
   trophies: string[];
   stars: number;
   quizzes: number;
@@ -15,7 +16,7 @@ export interface Progress {
 const KEY = 'earthtoy.progress';
 
 function empty(): Progress {
-  return { stickers: [], rides: [], flags: [], trophies: [], stars: 0, quizzes: 0, hunts: 0 };
+  return { stickers: [], rides: [], flags: [], states: [], trophies: [], stars: 0, quizzes: 0, hunts: 0 };
 }
 
 function load(): Progress {
@@ -64,6 +65,8 @@ export const TROPHIES: Trophy[] = [
   { id: 'flags50', name: 'Globe Trotter', emoji: '🌍', how: 'Tap 50 countries', check: (p) => p.flags.length >= 50 },
   { id: 'rides3', name: 'Passenger', emoji: '🎟️', how: 'Ride 3 vehicles', check: (p) => p.rides.length >= 3 },
   { id: 'ridesAll', name: 'Ride Master', emoji: '🚀', how: 'Ride every vehicle', check: (p) => ROUTES.every((r) => p.rides.includes(r.id)) },
+  { id: 'states10', name: 'State Finder', emoji: '🗺️', how: 'Find 10 states', check: (p) => p.states.length >= 10 },
+  { id: 'states50', name: 'All 50 States', emoji: '🇺🇸', how: 'Find all 50 states', check: (p) => p.states.length >= 50 },
   { id: 'hunt', name: 'World Finder', emoji: '🔍', how: 'Finish a Where in the World game', check: (p) => p.hunts >= 1 },
   { id: 'quiz', name: 'Quiz Whiz', emoji: '🧠', how: 'Finish a quiz', check: (p) => p.quizzes >= 1 },
   { id: 'stars50', name: 'Superstar', emoji: '⭐', how: 'Earn 50 stars in games', check: (p) => p.stars >= 50 },
@@ -71,7 +74,8 @@ export const TROPHIES: Trophy[] = [
 
 // ------------------------------------------------------------- collecting
 
-type Listener = (kind: 'sticker' | 'ride' | 'flag' | 'trophy', id: string) => void;
+export type CollectKind = 'sticker' | 'ride' | 'flag' | 'state' | 'trophy';
+type Listener = (kind: CollectKind, id: string) => void;
 const listeners: Listener[] = [];
 export const onCollect = (fn: Listener) => listeners.push(fn);
 const emit: Listener = (k, id) => listeners.forEach((fn) => fn(k, id));
@@ -85,7 +89,7 @@ function checkTrophies() {
   }
 }
 
-function add(list: string[], id: string, kind: 'sticker' | 'ride' | 'flag') {
+function add(list: string[], id: string, kind: Exclude<CollectKind, 'trophy'>) {
   if (list.includes(id)) return false;
   list.push(id);
   save();
@@ -98,6 +102,13 @@ function add(list: string[], id: string, kind: 'sticker' | 'ride' | 'flag') {
 export const collectSticker = (id: string) => add(progress.stickers, id, 'sticker');
 export const collectRide = (id: string) => add(progress.rides, id, 'ride');
 export const collectFlag = (id: string) => add(progress.flags, id, 'flag');
+export const collectState = (abbr: string) => add(progress.states, abbr, 'state');
+
+/** Start the 50 States game over (trophies are kept). */
+export function clearStates() {
+  progress.states = [];
+  save();
+}
 
 export function addStars(n: number, finished?: 'quiz' | 'hunt') {
   progress.stars += n;
@@ -109,7 +120,7 @@ export function addStars(n: number, finished?: 'quiz' | 'hunt') {
 }
 
 export function totalCollected() {
-  return progress.stickers.length + progress.rides.length + progress.flags.length + progress.trophies.length;
+  return progress.stickers.length + progress.rides.length + progress.flags.length + progress.states.length + progress.trophies.length;
 }
 
 export function resetProgress() {

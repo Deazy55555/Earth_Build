@@ -1,3 +1,4 @@
+import type { UsState } from './states';
 import factsJson from './facts.json';
 import { KIND_LABEL, type Place } from './places';
 import { KIND_NAME, type Route } from './routes';
@@ -302,5 +303,41 @@ export function vehicleCard(r: Route): Card {
     intro: intro.charAt(0).toUpperCase() + intro.slice(1),
     full: `${intro.charAt(0).toUpperCase() + intro.slice(1)} ${where} Did you know? ${r.fact}`,
     ride: true,
+  };
+}
+
+// ------------------------------------------------------------- US states
+
+const PROPER_BIRD = /^(American|Baltimore|California|Carolina|Rhode|Nene)/;
+const birdCall = (b: string) => `the ${PROPER_BIRD.test(b) ? b : b[0].toLowerCase() + b.slice(1)}`;
+const bare = (nick: string) => nick.replace(/^the /, '').replace(/^./, (x) => x.toUpperCase());
+
+export function stateCard(s: UsState): Card {
+  return {
+    emoji: s.emoji,
+    title: s.name,
+    subtitle: 'A state in the United States',
+    rows: [
+      { icon: '🏛️', label: 'Capital city', text: s.capital },
+      { icon: '🏷️', label: 'Nickname', text: bare(s.nickname) },
+      { icon: '🐦', label: 'State bird', text: s.bird },
+      { icon: '⭐', label: 'Did you know?', text: s.fact },
+    ],
+    intro: `This is ${s.name}! Its capital is ${s.capital}.`,
+    full: `This is ${s.name}! Its capital is ${s.capital}. Its nickname is ${s.nickname}. The state bird is ${birdCall(s.bird)}. Did you know? ${s.fact}`,
+  };
+}
+
+export function stateCapitalCard(s: UsState): Card {
+  return {
+    emoji: '🏛️',
+    title: s.capital,
+    subtitle: `The capital city of ${s.name}`,
+    rows: [
+      { icon: s.emoji, label: 'Capital of', text: s.name },
+      { icon: '🏛️', label: 'What is a state capital?', text: "It's the city where the state's leaders work." },
+    ],
+    intro: `This is ${s.capital}, the capital of ${s.name}!`,
+    full: `This is ${s.capital}, the capital city of ${s.name}. A state capital is the city where the state's leaders work.`,
   };
 }

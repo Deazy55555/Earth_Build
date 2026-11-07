@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { latLonToVec3 } from './geo';
 
-export type LabelKind = 'continent' | 'ocean' | 'sea' | 'country' | 'capital';
+export type LabelKind = 'continent' | 'ocean' | 'sea' | 'country' | 'capital' | 'state' | 'statecap';
 
 export interface LabelSpec {
   kind: LabelKind;
@@ -12,6 +12,8 @@ export interface LabelSpec {
   size: number;
   /** anything the tap handler needs */
   ref: unknown;
+  /** hide when the camera is closer than this (e.g. "United States" once the states show) */
+  hideBelow?: number;
 }
 
 interface Label extends LabelSpec {
@@ -28,8 +30,9 @@ interface Label extends LabelSpec {
   priority: number;
 }
 
-const PRIORITY: Record<LabelKind, number> = { continent: 0, ocean: 1, country: 2, sea: 3, capital: 4 };
+const PRIORITY: Record<LabelKind, number> = { continent: 0, ocean: 1, country: 2, state: 3, sea: 3, capital: 4, statecap: 5 };
 const SURFACE = 1.008;
+const CAPS = new Set<LabelKind>(['capital', 'statecap']);
 
 /**
  * Names that float over the globe as crisp HTML text. Each frame we work out
@@ -48,7 +51,7 @@ export class LabelLayer {
   add(spec: LabelSpec) {
     const el = document.createElement('div');
     el.className = `label label-${spec.kind}`;
-    if (spec.kind === 'capital') {
+    if (spec.kind === 'capital' || spec.kind === 'statecap') {
       el.innerHTML = '<span class="dot"></span><span class="txt"></span>';
       (el.querySelector('.txt') as HTMLElement).textContent = spec.text;
     } else {
@@ -84,6 +87,7 @@ export class LabelLayer {
   /** Should this label be visible at camera distance d (ignoring overlaps)? */
   private wanted(l: Label, d: number): boolean {
     if (this.hidden) return false;
+    if (l.hideBelow && d < l.hideBelow) return false;
     const zoom = d - 1; // height above the surface
     switch (l.kind) {
       case 'continent':
@@ -96,6 +100,10 @@ export class LabelLayer {
         return d < 2.55 && l.size / zoom > 0.034;
       case 'capital':
         return d < 1.9 && (l.size / zoom > 0.1 || d < 1.4);
+      case 'state':
+        return d < 2.4 && l.size / zoom > 0.02;
+      case 'statecap':
+        return d < 1.75 && (l.size / zoom > 0.07 || d < 1.4);
     }
   }
 
@@ -127,7 +135,7 @@ export class LabelLayer {
     candidates.sort((a, b) => a.priority - b.priority || Number(b.shown) - Number(a.shown) || b.size - a.size);
     const pad = 6;
     for (const l of candidates) {
-      const x0 = l.kind === 'capital' ? l.sx - 7 : l.sx - l.w / 2;
+      const x0 = CAPS.has(l.kind) ? l.sx - 7 : l.sx - l.w / 2;
       const r: [number, number, number, number] = [x0 - pad, l.sy - l.h / 2 - pad, x0 + l.w + pad, l.sy + l.h / 2 + pad];
       const hit = placed.some((p) => r[0] < p[2] && r[2] > p[0] && r[1] < p[3] && r[3] > p[1]);
       if (hit) l.target = 0;
@@ -149,7 +157,7 @@ export class LabelLayer {
         l.el.style.visibility = 'visible';
         l.shown = true;
       }
-      const ox = l.kind === 'capital' ? -7 : -l.w / 2;
+      const ox = CAPS.has(l.kind) ? -7 : -l.w / 2;
       l.el.style.transform = `translate3d(${(l.sx + ox).toFixed(1)}px, ${(l.sy - l.h / 2).toFixed(1)}px, 0)`;
       l.el.style.opacity = l.opacity.toFixed(3);
     }
@@ -160,8 +168,8 @@ export class LabelLayer {
     let best: Label | null = null;
     for (const l of this.labels) {
       if (!l.shown || l.opacity < 0.5) continue;
-      const x0 = l.kind === 'capital' ? l.sx - 12 : l.sx - l.w / 2 - 6;
-      const x1 = l.kind === 'capital' ? l.sx - 7 + l.w + 6 : l.sx + l.w / 2 + 6;
+      const x0 = CAPS.has(l.kind) ? l.sx - 12 : l.sx - l.w / 2 - 6;
+      const x1 = CAPS.has(l.kind) ? l.sx - 7 + l.w + 6 : l.sx + l.w / 2 + 6;
       if (x >= x0 && x <= x1 && y >= l.sy - l.h / 2 - 8 && y <= l.sy + l.h / 2 + 8) {
         if (!best || l.priority > best.priority) best = l; // prefer the more specific one
       }

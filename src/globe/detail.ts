@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { feature } from 'topojson-client';
+import { feature, mesh } from 'topojson-client';
+import { loadStates, statesTopology, USA_ID } from '../data/states';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
 import { geoBounds, geoEquirectangular, geoPath, geoCentroid, geoArea } from 'd3-geo';
@@ -16,6 +17,7 @@ interface DetailFeature {
   feature: Feature<Geometry>;
   color: string;
   bounds: [[number, number], [number, number]];
+  isUS?: boolean;
 }
 
 export interface DetailUniforms {
@@ -55,6 +57,7 @@ export class DetailPatch {
   private texture: THREE.CanvasTexture | null = null;
   private win = { lon: 0, lat: 0, lonSpan: 0, latSpan: 0 };
   private pending = false;
+  private stateLines: ReturnType<typeof mesh> | null = null;
 
   constructor(private countries: Country[], private maxAnisotropy: number, private terrain: Terrain) {}
 
@@ -80,7 +83,7 @@ export class DetailPatch {
         c = countryAt(lon, lat) ?? undefined;
       }
       const color = c ? (c.name === 'Antarctica' ? ICE : c.color) : '#c3e88d';
-      return { feature: f, color, bounds: geoBounds(f) as [[number, number], [number, number]] };
+      return { feature: f, color, bounds: geoBounds(f) as [[number, number], [number, number]], isUS: id === USA_ID };
     });
     // rivers and lakes (Natural Earth 1:10m)
     const [riversTopo, lakesTopo] = await Promise.all([import('../data/geo/rivers10.json'), import('../data/geo/lakes10.json')]);
@@ -188,10 +191,24 @@ export class DetailPatch {
     // a light wash of each country's toy colour so you can still tell them apart
     ctx.globalAlpha = 0.24;
     for (const f of visible) {
+      if (f.isUS) continue; // the states get their own colours below
       ctx.fillStyle = f.color;
       ctx.beginPath();
       path(f.feature);
       ctx.fill();
+    }
+    const usVisible = visible.some((f) => f.isUS);
+    if (usVisible) {
+      ctx.globalAlpha = 0.3;
+      for (const st of loadStates()) {
+        if (st.bounds[1][1] < lat0 || st.bounds[0][1] > lat1 || !inLon(st.bounds[0][0], st.bounds[1][0])) continue;
+        ctx.fillStyle = ctx.strokeStyle = st.color;
+        ctx.lineWidth = lw(4);
+        ctx.beginPath();
+        path(st.feature);
+        ctx.fill();
+        ctx.stroke();
+      }
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -226,6 +243,24 @@ export class DetailPatch {
       ctx.stroke();
     }
     ctx.setLineDash([]);
+
+    // state lines: thinner and lighter than the country borders
+    if (usVisible) {
+      const us = visible.find((f) => f.isUS)!;
+      const topo = statesTopology();
+      ctx.save();
+      ctx.beginPath();
+      path(us.feature);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = lw(0.9);
+      ctx.setLineDash([lw(3), lw(2.5)]);
+      ctx.beginPath();
+      path(this.stateLines ??= mesh(topo, topo.objects.states, (a, b) => a !== b));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
 
     this.texture?.dispose();
     const tex = new THREE.CanvasTexture(canvas);

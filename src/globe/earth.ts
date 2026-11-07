@@ -6,7 +6,15 @@ export const LAND_HEIGHT = 0.02; // tallest mountains (Everest) — very exagger
 
 export interface Land {
   mesh: THREE.Mesh;
-  uniforms: { uIdMap: { value: THREE.Texture }; uSelected: { value: number }; uTime: { value: number } };
+  uniforms: {
+    uIdMap: { value: THREE.Texture };
+    uSelected: { value: number };
+    uSelState: { value: number };
+    /** 1 for each state found in the states game (index 1..50) */
+    uStateMarks: { value: number[] };
+    uMarkOn: { value: number };
+    uTime: { value: number };
+  };
 }
 
 /**
@@ -17,6 +25,9 @@ export function createLand(color: THREE.Texture, heightMap: THREE.Texture, ids: 
   const uniforms = {
     uIdMap: { value: ids },
     uSelected: { value: -1 },
+    uSelState: { value: -1 },
+    uStateMarks: { value: new Array(51).fill(0) },
+    uMarkOn: { value: 0 },
     uTime: { value: 0 },
   };
 
@@ -40,6 +51,9 @@ export function createLand(color: THREE.Texture, heightMap: THREE.Texture, ids: 
         `#include <common>
          uniform sampler2D uIdMap;
          uniform float uSelected;
+         uniform float uSelState;
+         uniform float uStateMarks[51];
+         uniform float uMarkOn;
          uniform float uTime;
          uniform sampler2D uDetailMap;
          uniform vec4 uDetailWin;
@@ -50,9 +64,18 @@ export function createLand(color: THREE.Texture, heightMap: THREE.Texture, ids: 
         `#include <map_fragment>
          ${DETAIL_GLSL}
          {
-           float cid = floor(texture2D(uIdMap, vMapUv).r * 255.0 + 0.5);
-           if (uSelected > 0.0 && abs(cid - uSelected) < 0.5) {
-             float pulse = 0.38 + 0.16 * sin(uTime * 4.0);
+           vec4 idc = texture2D(uIdMap, vMapUv);
+           float cid = floor(idc.r * 255.0 + 0.5);
+           float sid = floor(idc.g * 255.0 + 0.5);
+           // states game: states still to find go pale, found ones stay bright
+           if (uMarkOn > 0.0 && sid > 0.5 && sid < 50.5) {
+             float found = uStateMarks[int(sid)];
+             float grey = dot(diffuseColor.rgb, vec3(0.3, 0.55, 0.15));
+             vec3 pale = mix(diffuseColor.rgb, vec3(grey * 0.55 + 0.42), 0.8);
+             diffuseColor.rgb = mix(diffuseColor.rgb, pale, uMarkOn * (1.0 - found));
+           }
+           float pulse = 0.38 + 0.16 * sin(uTime * 4.0);
+           if ((uSelected > 0.0 && abs(cid - uSelected) < 0.5) || (uSelState > 0.0 && abs(sid - uSelState) < 0.5)) {
              diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.98, 0.85), pulse);
            }
          }`,

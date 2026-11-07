@@ -6,6 +6,7 @@ import { loadCountries, type Country } from '../data/countries';
 import { factsFor, nm, callIt } from '../data/cards';
 import { PLACES, type Place } from '../data/places';
 import { WATERS, CONTINENTS } from '../data/kid';
+import { loadStates } from '../data/states';
 
 // ------------------------------------------------------------- phrases
 
@@ -19,6 +20,9 @@ export const SAY = {
   newTrophy: 'Wow! You won a trophy!',
   notQuite: 'Not quite!',
   rightOne: "Here's the right one!",
+  statesStart: "Let's find all 50 states!",
+  statesMore: "Let's find more states!",
+  statesAll: 'Wow! You found all 50 states! You are a states superstar!',
   yes: ['Great job!', 'You got it!', 'Awesome!', 'Well done!', 'Super!'],
 };
 export const sayFind = (call: string) => `Can you find ${call}?`;
@@ -26,6 +30,7 @@ export const sayFound = (call: string) => `Yes! You found ${call}!`;
 export const sayWrong = (call: string) => `Oops, that's ${call}. Try again!`;
 export const sayShow = (call: string) => `Here it is! This is ${call}.`;
 export const sayAnswer = (text: string) => `The answer is ${text}${/[.!?]$/.test(text) ? '' : '.'}`;
+export const saySoFar = (n: number) => (n === 1 ? 'You found 1 state so far.' : `You found ${n} states so far.`);
 export const sayEnd = (stars: number, total: number) =>
   stars === total ? `Amazing! You got all ${total} stars!` : `You got ${stars} out of ${total} stars!`;
 
@@ -211,6 +216,17 @@ export function questions(): Question[] {
     ['What is the longest railway in the world?', '🚂', ['Trans-Siberian Railway', 'Eurostar', 'California Zephyr'], 'the Trans-Siberian Railway', 2],
     ['Which train goes under the sea between England and France?', '🚄', ['Eurostar', 'Bullet Train', 'Indian Pacific'], 'the Eurostar', 2],
   ];
+  // state capitals (harder)
+  const states = loadStates();
+  for (const st of states) {
+    const wrong = pick(r, states, 2, (x) => x === st);
+    const [opts, answer] = shuffleIn(r, wrong, st);
+    qs.push({
+      id: `statecap-${st.abbr}`, level: 2, emoji: st.emoji, text: `Which city is the capital of the state of ${st.name}?`,
+      options: opts.map((o) => ({ label: o.capital, emoji: '🏛️' })), answer, reveal: sayAnswer(st.capital),
+    });
+  }
+
   fixed.forEach(([text, emoji, opts, spoken, level], i) => {
     const [all, answer] = shuffleIn(r, opts.slice(1), opts[0]);
     qs.push({ id: `fact-${i}`, level, emoji, text, options: all.map((o) => ({ label: o })), answer, reveal: sayAnswer(spoken) });
@@ -229,6 +245,10 @@ export function allGameSentences(): string[] {
   for (const p of PLACES) out.add(sayFind(callIt(p)));
   for (const c of loadCountries()) out.add(sayFind(countryCall(c)));
   for (const q of questions()) [q.text, q.reveal].forEach((s) => out.add(s));
+  // the 50 States game
+  [SAY.statesStart, SAY.statesMore, SAY.statesAll].forEach((s) => out.add(s));
+  for (let n = 1; n < 50; n++) out.add(saySoFar(n));
+  for (const st of loadStates()) [sayFind(st.name), sayFound(st.name), sayShow(st.name), sayWrong(st.name)].forEach((s) => out.add(s));
   for (let total = 5; total <= 6; total++) for (let s = 0; s <= total; s++) out.add(sayEnd(s, total));
   return [...out];
 }

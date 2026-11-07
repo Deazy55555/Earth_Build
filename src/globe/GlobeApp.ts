@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { loadCountries, countryAt, type Country } from '../data/countries';
+import { loadStates, stateAt, USA_ID, type UsState } from '../data/states';
 import { buildColorTexture, buildIdTexture, buildMaskTexture, buildTerrain, sampleGrid, type Terrain } from './mapTextures';
 import { createLand, createAtmosphere, LAND_HEIGHT, LAND_LIFT, type Land } from './earth';
 import { createOcean } from './ocean';
@@ -32,6 +33,8 @@ interface Flight {
 
 export interface GlobeEvents {
   onCountryTap?: (c: Country) => void;
+  /** a tap on the United States, with the state under the finger */
+  onStateTap?: (s: UsState) => void;
   onLabelTap?: (label: LabelSpec) => void;
   onWaterTap?: (id: string) => void;
   onThingTap?: (place: Place) => void;
@@ -76,8 +79,18 @@ export class GlobeApp {
   private rideCam = new THREE.Vector3();
   private rideLook = new THREE.Vector3();
   /** where the camera would be without tilt — what the orbit controls work with */
-  private orbitPos = new THREE.Vector3();
-  private orbitQuat = new THREE.Quaternion();
+  /**
+   * The touch controls steer this invisible camera. Each frame the real camera
+   * copies it and then adds the tilt, so pinches and drags (which the controls
+   * apply the moment they happen) are never overwritten.
+   */
+  private orbitCam = new THREE.PerspectiveCamera(40, 1, 0.01, 200);
+  private get orbitPos() {
+    return this.orbitCam.position;
+  }
+  private get orbitQuat() {
+    return this.orbitCam.quaternion;
+  }
   private width = 1;
   private height = 1;
 
@@ -98,7 +111,7 @@ export class GlobeApp {
     this.camera.position.copy(latLonToVec3(20, 10, HOME_DIST));
     this.orbitPos.copy(this.camera.position);
 
-    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls = new OrbitControls(this.orbitCam, canvas);
     this.controls.enablePan = false;
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.07;
@@ -162,13 +175,19 @@ export class GlobeApp {
     for (const c of list) {
       if (c.name === 'Antarctica' || c.name === 'Siachen Glacier') continue;
       const size = Math.sqrt(c.area / Math.PI);
-      this.labels.add({ kind: 'country', text: c.name, lat: c.centroid[1], lon: c.centroid[0], size, ref: { country: c } });
+      const hideBelow = c.id === USA_ID ? 2.3 : undefined; // make room for the state names
+      this.labels.add({ kind: 'country', text: c.name, lat: c.centroid[1], lon: c.centroid[0], size, ref: { country: c }, hideBelow });
       // very wide countries get a second name so you can see it from either end
       for (const [lat, lon] of EXTRA_LABEL_SPOTS[c.name] ?? [])
         this.labels.add({ kind: 'country', text: c.name, lat, lon, size: size * 0.6, ref: { country: c } });
       const f = factsFor(c);
       if (f?.capital && f.independent)
         this.labels.add({ kind: 'capital', text: f.capital.name, lat: f.capital.lat, lon: f.capital.lon, size, ref: { capital: c } });
+    }
+    for (const st of loadStates()) {
+      const size = Math.sqrt(st.area / Math.PI);
+      this.labels.add({ kind: 'state', text: st.name, lat: st.centroid[1], lon: st.centroid[0], size, ref: { state: st } });
+      this.labels.add({ kind: 'statecap', text: st.capital, lat: st.at[0], lon: st.at[1], size, ref: { stateCapital: st } });
     }
     this.labels.measure();
   }
@@ -230,7 +249,24 @@ export class GlobeApp {
   }
 
   select(c: Country | null) {
-    if (this.land) this.land.uniforms.uSelected.value = c ? c.index : -1;
+    if (!this.land) return;
+    this.land.uniforms.uSelected.value = c ? c.index : -1;
+    this.land.uniforms.uSelState.value = -1;
+  }
+
+  /** Light up one US state (and nothing else). */
+  selectState(s: UsState | null) {
+    if (!this.land) return;
+    this.land.uniforms.uSelected.value = -1;
+    this.land.uniforms.uSelState.value = s ? s.index : -1;
+  }
+
+  /** States game: grey out the states not found yet (null = normal colours). */
+  markStates(found: Set<string> | null) {
+    if (!this.land) return;
+    const u = this.land.uniforms;
+    u.uMarkOn.value = found ? 1 : 0;
+    if (found) for (const s of loadStates()) u.uStateMarks.value[s.index] = found.has(s.abbr) ? 1 : 0;
   }
 
   private setupTapping() {
@@ -255,6 +291,9 @@ export class GlobeApp {
     });
   }
 
+  /** Where on the globe the last tap landed. */
+  lastTap = { lon: 0, lat: 0 };
+
   private handleTap(x: number, y: number) {
     const vehicle = this.vehicles.hitTest(x, y, this.camera, this.width, this.height);
     if (vehicle) return this.events.onVehicleTap?.(vehicle);
@@ -268,7 +307,12 @@ export class GlobeApp {
     const hit = this.raycaster.ray.intersectSphere(this.pickSphere, new THREE.Vector3());
     if (!hit) return this.events.onEmptyTap?.();
     const [lon, lat] = vec3ToLonLat(hit);
+    this.lastTap = { lon, lat };
     const c = countryAt(lon, lat);
+    if (c?.id === USA_ID && this.events.onStateTap) {
+      const st = stateAt(lon, lat);
+      if (st) return this.events.onStateTap(st);
+    }
     if (c) return this.events.onCountryTap?.(c);
     const water = waterAt(lon, lat);
     if (water) return this.events.onWaterTap?.(water);
@@ -300,9 +344,6 @@ export class GlobeApp {
       d = this.updateRide(dt);
     } else {
       // Work in un-tilted "orbit" space; the tilt is added just before drawing.
-      this.camera.position.copy(this.orbitPos);
-      this.camera.quaternion.copy(this.orbitQuat);
-
       this.updateFlight(dt);
       this.updateZoom(dt);
 
@@ -312,9 +353,13 @@ export class GlobeApp {
       // Turning should feel the same whether zoomed in or out.
       d = this.distance();
       this.controls.rotateSpeed = THREE.MathUtils.clamp((d - 1) * 0.42, 0.04, 0.9);
+      // Pinches scale the height above the ground (not the distance to the
+      // planet's centre), so zooming feels the same high up and close in.
+      this.controls.zoomSpeed = 1.1 * ((d - 1) / d);
       this.controls.update(dt);
-      this.orbitPos.copy(this.camera.position);
-      this.orbitQuat.copy(this.camera.quaternion);
+      this.camera.position.copy(this.orbitPos);
+      this.camera.quaternion.copy(this.orbitQuat);
+      this.camera.updateMatrixWorld();
       this.applyTilt(d);
     }
     const [viewLon, viewLat] = vec3ToLonLat(this.orbitPos);
@@ -424,7 +469,7 @@ export class GlobeApp {
     // lift up a little in the middle of long trips so it feels like a hop
     const hop = Math.sin(Math.PI * k) * Math.min(0.6, f.from.angleTo(f.to) * 0.35);
     const dist = THREE.MathUtils.lerp(f.fromDist, f.toDist, k) + hop;
-    this.camera.position.copy(dir.multiplyScalar(dist));
+    this.orbitPos.copy(dir.multiplyScalar(dist));
     if (f.t >= 1) this.flight = null;
   }
 
@@ -432,7 +477,7 @@ export class GlobeApp {
     if (this.zoomGoal === null) return;
     const d = this.distance();
     const next = THREE.MathUtils.damp(d, this.zoomGoal, 6, dt);
-    this.camera.position.setLength(next);
+    this.orbitPos.setLength(next);
     if (Math.abs(next - this.zoomGoal) < 0.002) this.zoomGoal = null;
   }
 

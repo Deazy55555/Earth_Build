@@ -27,7 +27,15 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,png,svg,json,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}', 'voice/index.json'],
+        // voice clips are saved for offline use the first time they're played
+        runtimeCaching: [
+          {
+            urlPattern: /\/voice\/.*\.mp3$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'voice', expiration: { maxEntries: 5000 } },
+          },
+        ],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
     }),

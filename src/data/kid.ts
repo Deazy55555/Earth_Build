@@ -110,6 +110,11 @@ export const LANGUAGE_DISPLAY: Record<string, string> = {
   IN: 'Hindi, English and many more',
   ZA: 'Zulu, Xhosa, English and 9 more',
   CH: 'German, French, Italian and Romansh',
+  ZW: 'Shona, Ndebele, English and many more',
+  NA: 'English, Oshiwambo, Afrikaans and more',
+  CD: 'French, Lingala, Swahili and more',
+  BO: 'Spanish, Quechua, Aymara and Guaraní',
+  SG: 'English, Malay, Chinese and Tamil',
 };
 
 /** Countries that sit in two continents. */

@@ -47,6 +47,7 @@ function continent(c) {
 }
 
 const CAPITAL_FIXES = {
+  US: 'Washington, D.C.',
   ZA: 'Pretoria', // has three capitals; Pretoria is where the president works
   BO: 'Sucre',
   NL: 'Amsterdam',

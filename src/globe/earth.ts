@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DETAIL_GLSL, type DetailUniforms } from './detail';
 
 export const LAND_LIFT = 0.0018; // tiny islands sit just above the water
 export const LAND_HEIGHT = 0.011; // how much big land masses puff up
@@ -12,7 +13,7 @@ export interface Land {
  * The land shell: a sphere that's pushed outwards where there's land,
  * with the ocean cut away so the animated water sphere shows through.
  */
-export function createLand(color: THREE.Texture, mask: THREE.Texture, ids: THREE.Texture, segments = 768): Land {
+export function createLand(color: THREE.Texture, mask: THREE.Texture, ids: THREE.Texture, detail: DetailUniforms, segments = 768): Land {
   const uniforms = {
     uIdMap: { value: ids },
     uSelected: { value: -1 },
@@ -32,18 +33,22 @@ export function createLand(color: THREE.Texture, mask: THREE.Texture, ids: THREE
   });
 
   mat.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
+    Object.assign(shader.uniforms, uniforms, detail);
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         `#include <common>
          uniform sampler2D uIdMap;
          uniform float uSelected;
-         uniform float uTime;`,
+         uniform float uTime;
+         uniform sampler2D uDetailMap;
+         uniform vec4 uDetailWin;
+         uniform float uDetailOn;`,
       )
       .replace(
         '#include <map_fragment>',
         `#include <map_fragment>
+         ${DETAIL_GLSL}
          {
            float cid = floor(texture2D(uIdMap, vMapUv).r * 255.0 + 0.5);
            if (uSelected > 0.0 && abs(cid - uSelected) < 0.5) {

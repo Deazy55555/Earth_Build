@@ -7,6 +7,9 @@ import { createOcean } from './ocean';
 import { createClouds, createStars } from './sky';
 import { latLonToVec3, vec3ToLonLat } from './geo';
 import { LabelLayer, type LabelSpec } from './labels';
+import { DetailPatch } from './detail';
+import { ThingLayer } from './things';
+import type { Place } from '../data/places';
 import { buildOceanGrid, waterAt } from '../data/oceans';
 import { factsFor } from '../data/cards';
 import { CONTINENTS, WATERS, WATER_LABELS } from '../data/kid';
@@ -29,13 +32,13 @@ export interface GlobeEvents {
   onCountryTap?: (c: Country) => void;
   onLabelTap?: (label: LabelSpec) => void;
   onWaterTap?: (id: string) => void;
+  onThingTap?: (place: Place) => void;
   onEmptyTap?: () => void;
 }
 
 const EXTRA_LABEL_SPOTS: Record<string, [number, number][]> = {
   Russia: [[60, 48]],
-  Canada: [[54, -70], [64, -125]],
-  'United States': [[37, -85]],
+  Canada: [[54, -72]],
 };
 
 /** Below this distance the camera starts tipping towards the horizon. */
@@ -62,6 +65,8 @@ export class GlobeApp {
   private qualityChecked = 0;
   private pixelRatio: number;
   private labels: LabelLayer;
+  private detail!: DetailPatch;
+  things!: ThingLayer;
   /** where the camera would be without tilt — what the orbit controls work with */
   private orbitPos = new THREE.Vector3();
   private orbitQuat = new THREE.Quaternion();
@@ -112,11 +117,25 @@ export class GlobeApp {
     color.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
 
     this.ocean = createOcean(mask);
-    this.land = createLand(color, mask, ids);
+    this.detail = new DetailPatch(list, this.renderer.capabilities.getMaxAnisotropy());
+    this.land = createLand(color, mask, ids, this.detail.uniforms);
     this.clouds = createClouds();
     this.stars = createStars();
     this.scene.add(this.ocean, this.land.mesh, createAtmosphere(), this.clouds, this.stars);
     (this.stars.material as THREE.ShaderMaterial).uniforms.uPixelRatio.value = this.pixelRatio;
+
+    // land height under each spot, so models sit right on the ground
+    const maskCanvas = mask.image as HTMLCanvasElement;
+    const mw = maskCanvas.width;
+    const mh = maskCanvas.height;
+    const mdata = maskCanvas.getContext('2d')!.getImageData(0, 0, mw, mh).data;
+    const heightAt = (lat: number, lon: number) => {
+      const x = Math.min(mw - 1, Math.max(0, Math.floor(((lon + 180) / 360) * mw)));
+      const y = Math.min(mh - 1, Math.max(0, Math.floor(((90 - lat) / 180) * mh)));
+      return 1 + LAND_LIFT + (LAND_HEIGHT * mdata[(y * mw + x) * 4]) / 255;
+    };
+    this.things = new ThingLayer(heightAt);
+    this.scene.add(this.things.group);
 
     buildOceanGrid(list);
     this.buildLabels(list);
@@ -227,6 +246,8 @@ export class GlobeApp {
   }
 
   private handleTap(x: number, y: number) {
+    const thing = this.things.hitTest(x, y, this.camera, this.width, this.height);
+    if (thing) return this.events.onThingTap?.(thing);
     const label = this.labels.hitTest(x, y);
     if (label) return this.events.onLabelTap?.(label);
     const rect = this.canvas.getBoundingClientRect();
@@ -278,6 +299,8 @@ export class GlobeApp {
     this.orbitPos.copy(this.camera.position);
     this.orbitQuat.copy(this.camera.quaternion);
     this.applyTilt(d);
+    const [viewLon, viewLat] = vec3ToLonLat(this.orbitPos);
+    this.detail.update(viewLon, viewLat, d, dt);
 
     // Sun hangs over the camera's shoulder so the side you look at is always sunny.
     const lightDir = LIGHT_OFFSET.clone().applyQuaternion(this.camera.quaternion);
@@ -293,6 +316,7 @@ export class GlobeApp {
     cloudMat.opacity = THREE.MathUtils.smoothstep(d, 2.0, 2.6);
     this.clouds.visible = cloudMat.opacity > 0.01;
 
+    this.things.update(this.camera, d, dt);
     this.labels.update(this.camera, this.width, this.height, dt);
     this.renderer.render(this.scene, this.camera);
     this.checkQuality(dt);

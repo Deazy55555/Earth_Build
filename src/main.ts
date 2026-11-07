@@ -1,9 +1,9 @@
 import './style.css';
 import { GlobeApp } from './globe/GlobeApp';
 import type { Country } from './data/countries';
-import { countryCard, capitalCard, waterCard, continentCard, factsFor, type Card } from './data/cards';
+import { countryCard, capitalCard, waterCard, continentCard, thingCard, factsFor, type Card } from './data/cards';
 import { CONTINENTS } from './data/kid';
-import { say, speechEnabled, setSpeechEnabled } from './speech';
+import { say, stopSpeaking, speechEnabled, setSpeechEnabled } from './speech';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -42,6 +42,7 @@ function showCard(c: Card) {
 
 function hideCard() {
   current = null;
+  stopSpeaking();
   card.classList.add('hidden');
   app.select(null);
 }
@@ -54,6 +55,12 @@ function openCountry(c: Country) {
 
 const app = new GlobeApp($<HTMLCanvasElement>('globe'), $('labels'), {
   onCountryTap: openCountry,
+  onThingTap(place) {
+    app.select(null);
+    showCard(thingCard(place));
+    if (place.anim === 'launch') app.things.launch(place.id);
+    app.flyTo(place.lon, place.lat, Math.min(app.orbitDistance, 1.6));
+  },
   onLabelTap(label) {
     const ref = label.ref as { country?: Country; capital?: Country; water?: string; continent?: string };
     if (ref.country) return openCountry(ref.country);

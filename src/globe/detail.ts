@@ -5,6 +5,8 @@ import type { Feature, Geometry } from 'geojson';
 import { geoBounds, geoEquirectangular, geoPath, geoCentroid, geoArea } from 'd3-geo';
 import { countryAt, type Country } from '../data/countries';
 import { ICE } from '../data/palette';
+import { buildNature, type Nature } from './nature';
+import type { Terrain } from './mapTextures';
 
 const SAND = '#f6e3b4';
 const MAX_W = 4096;
@@ -45,13 +47,20 @@ export class DetailPatch {
     uDetailOn: { value: 0 },
   };
   private features: DetailFeature[] | null = null;
+  private lakes: Feature<Geometry>[] = [];
+  private rivers: { f: Feature<Geometry>; rank: number; bounds: [[number, number], [number, number]] }[] = [];
+  private nature: Nature | null = null;
   private loading = false;
   private canvas = document.createElement('canvas');
   private texture: THREE.CanvasTexture | null = null;
   private win = { lon: 0, lat: 0, lonSpan: 0, latSpan: 0 };
   private pending = false;
 
-  constructor(private countries: Country[], private maxAnisotropy: number) {}
+  constructor(private countries: Country[], private maxAnisotropy: number, private terrain: Terrain) {}
+
+  getNature() {
+    return this.nature;
+  }
 
   private async load() {
     this.loading = true;
@@ -61,7 +70,7 @@ export class DetailPatch {
     const byId = new Map(this.countries.map((c) => [c.id, c]));
     const fc = feature(topo, topo.objects.countries);
     const geoms = topo.objects.countries.geometries;
-    this.features = fc.features.map((raw, i) => {
+    const features: DetailFeature[] = fc.features.map((raw, i) => {
       const f = fixWinding(raw as Feature<Geometry>);
       const name = (f.properties as { name: string }).name;
       const id = (geoms[i].id as string | undefined) ?? name;
@@ -73,6 +82,16 @@ export class DetailPatch {
       const color = c ? (c.name === 'Antarctica' ? ICE : c.color) : '#c3e88d';
       return { feature: f, color, bounds: geoBounds(f) as [[number, number], [number, number]] };
     });
+    // rivers and lakes (Natural Earth 1:10m)
+    const [riversTopo, lakesTopo] = await Promise.all([import('../data/geo/rivers10.json'), import('../data/geo/lakes10.json')]);
+    const fcOf = (t: unknown) => {
+      const topo = t as Topology<{ [k: string]: GeometryCollection<{ scalerank: number }> }>;
+      return feature(topo, topo.objects[Object.keys(topo.objects)[0]]).features as Feature<Geometry, { scalerank: number }>[];
+    };
+    this.lakes = fcOf(lakesTopo.default).filter((f) => f.geometry).map(fixWinding);
+    this.rivers = fcOf(riversTopo.default).filter((f) => f.geometry).map((f) => ({ f, rank: f.properties.scalerank ?? 8, bounds: geoBounds(f) as [[number, number], [number, number]] }));
+    this.nature = buildNature(this.terrain);
+    this.features = features; // ready to draw
   }
 
   /** Call every frame with where the camera is looking and how far away it is. */
@@ -85,7 +104,7 @@ export class DetailPatch {
       if (!this.loading) this.load();
       return;
     }
-    const latSpan = THREE.MathUtils.clamp((dist - 1) * 55, 10, 42);
+    const latSpan = THREE.MathUtils.clamp((dist - 1) * 55, 6, 42);
     const lonSpan = Math.min(170, (latSpan * 1.7) / Math.max(0.3, Math.cos((lat * Math.PI) / 180)));
     const w = this.win;
     const dLon = Math.abs(((lon - w.lon + 540) % 360) - 180);
@@ -138,24 +157,75 @@ export class DetailPatch {
     const lw = (n: number) => Math.max(n, n * Math.min(px, 3.2));
     ctx.clearRect(0, 0, W, H);
     ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    // sandy beaches (outer half shows past the coast)
     ctx.strokeStyle = SAND;
     ctx.lineWidth = lw(4);
     ctx.beginPath();
     for (const f of visible) path(f.feature);
     ctx.stroke();
+
+    // the real-looking ground, cut to the detailed coastline
+    const n = this.nature!;
+    ctx.save();
+    ctx.beginPath();
+    for (const f of visible) path(f.feature);
+    ctx.clip();
+    const latTop = latC + latSpan / 2;
+    const sy = ((90 - latTop) / 180) * n.h;
+    const sh = (latSpan / 180) * n.h;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    const l0 = lonC - lonSpan / 2;
+    const l1 = lonC + lonSpan / 2;
+    for (const k of [-360, 0, 360]) {
+      const a = Math.max(l0, -180 + k);
+      const b = Math.min(l1, 180 + k);
+      if (b <= a) continue;
+      ctx.drawImage(n.canvas, ((a - k + 180) / 360) * n.w, sy, ((b - a) / 360) * n.w, sh, (a - l0) * ppd, 0, (b - a) * ppd, H);
+    }
+    // a light wash of each country's toy colour so you can still tell them apart
+    ctx.globalAlpha = 0.24;
     for (const f of visible) {
       ctx.fillStyle = f.color;
       ctx.beginPath();
       path(f.feature);
       ctx.fill();
     }
-    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-    ctx.lineWidth = lw(1.6);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // lakes and rivers
+    const water = '#4aa6e6';
+    ctx.fillStyle = water;
+    ctx.strokeStyle = '#d9f1ff';
+    ctx.lineWidth = lw(0.8);
+    for (const f of this.lakes) {
+      ctx.beginPath();
+      path(f);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.strokeStyle = water;
+    for (const r of this.rivers) {
+      if (r.bounds[1][1] < lat0 || r.bounds[0][1] > lat1 || !inLon(r.bounds[0][0], r.bounds[1][0])) continue;
+      ctx.lineWidth = lw(Math.max(0.7, 2.6 - r.rank * 0.22));
+      ctx.beginPath();
+      path(r.f);
+      ctx.stroke();
+    }
+
+    // borders: soft dashed white lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = lw(1.3);
+    ctx.setLineDash([lw(5), lw(3.5)]);
     for (const f of visible) {
       ctx.beginPath();
       path(f.feature);
       ctx.stroke();
     }
+    ctx.setLineDash([]);
 
     this.texture?.dispose();
     const tex = new THREE.CanvasTexture(canvas);

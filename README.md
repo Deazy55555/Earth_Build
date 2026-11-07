@@ -37,6 +37,11 @@ src/
   globe/labels.ts      names that fade in as you zoom, without overlapping
   globe/detail.ts      sharp high-detail map patch when zoomed in close
   globe/things.ts      places the toy models, pop-in, idle animations, tapping
+  globe/nature.ts      natural ground colours (forest, savanna, desert, tundra, rock, snow) + hill shading
+  globe/props.ts       trees, rocks, bushes and cactus scattered by climate near the view
+  globe/vehicles.ts    planes, ships, trains and balloons moving along their routes
+  data/routes.ts       every route (npm run check-routes makes sure ships stay at sea, trains on land)
+  data/geo/            rivers, lakes, deserts (Natural Earth, simplified)
   models/              the toy models, built from boxes, cylinders and balls (kit.ts)
   data/places.ts       where every model lives + its fact card
   speech.ts            plays the recorded voice (falls back to the iPad voice)
@@ -51,7 +56,7 @@ dev/gallery.html       all models side by side (npm run dev → /dev/gallery.htm
 2. ✅ Toy globe: countries, puffy land, ocean, clouds, stars, tap a country
 3. ✅ Names that fade in with zoom, camera tilt up close, fact cards with read-aloud
 4. ✅ 80+ toy models: landmarks, animals, sea life, dinosaurs, space sites and boats; sharp map up close; natural read-aloud voice
-5. Planes, ships and trains on real routes
+5. ✅ Planes, ships, trains and balloons on real routes with ride-along; real mountains, rivers, lakes, forests, deserts, trees and rocks up close
 6. Games, stickers and an animal book
 7. The Moon and Mars
 8. Sound, music and a parent settings page
@@ -61,6 +66,8 @@ dev/gallery.html       all models side by side (npm run dev → /dev/gallery.htm
 - Country borders and capital cities: [Natural Earth](https://www.naturalearthdata.com/) (public domain)
 - Population: World Bank, via [datasets/population](https://github.com/datasets/population)
 - Capitals, languages, regions: [world-countries](https://github.com/mledoze/countries) (ODbL)
+- Rivers, lakes, deserts: Natural Earth (public domain)
+- Elevation: NASA topography (public domain), via [three-globe](https://github.com/vasturiano/three-globe)
 
 To refresh the facts: `npm run facts`
 

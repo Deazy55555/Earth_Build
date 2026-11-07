@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { loadCountries, countryAt, type Country } from '../data/countries';
-import { buildColorTexture, buildIdTexture, buildMaskTexture } from './mapTextures';
+import { buildColorTexture, buildIdTexture, buildMaskTexture, buildTerrain, sampleGrid, type Terrain } from './mapTextures';
 import { createLand, createAtmosphere, LAND_HEIGHT, LAND_LIFT, type Land } from './earth';
 import { createOcean } from './ocean';
 import { createClouds, createStars } from './sky';
@@ -9,6 +9,8 @@ import { latLonToVec3, vec3ToLonLat } from './geo';
 import { LabelLayer, type LabelSpec } from './labels';
 import { DetailPatch } from './detail';
 import { ThingLayer } from './things';
+import { PropLayer } from './props';
+import { VehicleLayer, rideScale, type Vehicle } from './vehicles';
 import type { Place } from '../data/places';
 import { buildOceanGrid, waterAt } from '../data/oceans';
 import { factsFor } from '../data/cards';
@@ -33,6 +35,8 @@ export interface GlobeEvents {
   onLabelTap?: (label: LabelSpec) => void;
   onWaterTap?: (id: string) => void;
   onThingTap?: (place: Place) => void;
+  onVehicleTap?: (v: Vehicle) => void;
+  onRideEnd?: () => void;
   onEmptyTap?: () => void;
 }
 
@@ -67,6 +71,10 @@ export class GlobeApp {
   private labels: LabelLayer;
   private detail!: DetailPatch;
   things!: ThingLayer;
+  private props!: PropLayer;
+  vehicles!: VehicleLayer;
+  private rideCam = new THREE.Vector3();
+  private rideLook = new THREE.Vector3();
   /** where the camera would be without tilt — what the orbit controls work with */
   private orbitPos = new THREE.Vector3();
   private orbitQuat = new THREE.Quaternion();
@@ -109,33 +117,35 @@ export class GlobeApp {
   }
 
   /** Builds textures and meshes. Heavy-ish, so call after the loading screen has painted. */
-  build() {
+  terrain!: Terrain;
+  heightAt: (lat: number, lon: number) => number = () => 1;
+
+  build(topo: ImageData | null) {
     const list = loadCountries();
     const color = buildColorTexture(list);
     const ids = buildIdTexture(list);
     const mask = buildMaskTexture(list);
+    const { terrain, texture: heightTex } = buildTerrain(mask, topo);
+    this.terrain = terrain;
     color.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
 
     this.ocean = createOcean(mask);
-    this.detail = new DetailPatch(list, this.renderer.capabilities.getMaxAnisotropy());
-    this.land = createLand(color, mask, ids, this.detail.uniforms);
+    this.detail = new DetailPatch(list, this.renderer.capabilities.getMaxAnisotropy(), terrain);
+    this.land = createLand(color, heightTex, ids, this.detail.uniforms);
     this.clouds = createClouds();
     this.stars = createStars();
     this.scene.add(this.ocean, this.land.mesh, createAtmosphere(), this.clouds, this.stars);
     (this.stars.material as THREE.ShaderMaterial).uniforms.uPixelRatio.value = this.pixelRatio;
 
     // land height under each spot, so models sit right on the ground
-    const maskCanvas = mask.image as HTMLCanvasElement;
-    const mw = maskCanvas.width;
-    const mh = maskCanvas.height;
-    const mdata = maskCanvas.getContext('2d')!.getImageData(0, 0, mw, mh).data;
-    const heightAt = (lat: number, lon: number) => {
-      const x = Math.min(mw - 1, Math.max(0, Math.floor(((lon + 180) / 360) * mw)));
-      const y = Math.min(mh - 1, Math.max(0, Math.floor(((90 - lat) / 180) * mh)));
-      return 1 + LAND_LIFT + (LAND_HEIGHT * mdata[(y * mw + x) * 4]) / 255;
-    };
+    const heightAt = (lat: number, lon: number) => 1 + LAND_LIFT + LAND_HEIGHT * sampleGrid(terrain, terrain.height, lat, lon);
+    this.heightAt = heightAt;
     this.things = new ThingLayer(heightAt);
     this.scene.add(this.things.group);
+    this.props = new PropLayer(terrain, () => this.detail.getNature(), heightAt);
+    this.scene.add(this.props.group);
+    this.vehicles = new VehicleLayer(heightAt);
+    this.scene.add(this.vehicles.group);
 
     buildOceanGrid(list);
     this.buildLabels(list);
@@ -246,6 +256,8 @@ export class GlobeApp {
   }
 
   private handleTap(x: number, y: number) {
+    const vehicle = this.vehicles.hitTest(x, y, this.camera, this.width, this.height);
+    if (vehicle) return this.events.onVehicleTap?.(vehicle);
     const thing = this.things.hitTest(x, y, this.camera, this.width, this.height);
     if (thing) return this.events.onThingTap?.(thing);
     const label = this.labels.hitTest(x, y);
@@ -282,23 +294,29 @@ export class GlobeApp {
     const dt = Math.min(this.timer.getDelta(), 0.1);
     const t = this.timer.getElapsed();
 
-    // Work in un-tilted "orbit" space; the tilt is added just before drawing.
-    this.camera.position.copy(this.orbitPos);
-    this.camera.quaternion.copy(this.orbitQuat);
+    this.vehicles.advance(dt);
+    let d: number;
+    if (this.vehicles.riding) {
+      d = this.updateRide(dt);
+    } else {
+      // Work in un-tilted "orbit" space; the tilt is added just before drawing.
+      this.camera.position.copy(this.orbitPos);
+      this.camera.quaternion.copy(this.orbitQuat);
 
-    this.updateFlight(dt);
-    this.updateZoom(dt);
+      this.updateFlight(dt);
+      this.updateZoom(dt);
 
-    // Slow spin when nobody has touched it for a while.
-    if (!this.flight && performance.now() - this.lastInteraction > 12000) this.controls.autoRotate = true;
+      // Slow spin when nobody has touched it for a while.
+      if (!this.flight && performance.now() - this.lastInteraction > 12000) this.controls.autoRotate = true;
 
-    // Turning should feel the same whether zoomed in or out.
-    const d = this.distance();
-    this.controls.rotateSpeed = THREE.MathUtils.clamp((d - 1) * 0.42, 0.04, 0.9);
-    this.controls.update(dt);
-    this.orbitPos.copy(this.camera.position);
-    this.orbitQuat.copy(this.camera.quaternion);
-    this.applyTilt(d);
+      // Turning should feel the same whether zoomed in or out.
+      d = this.distance();
+      this.controls.rotateSpeed = THREE.MathUtils.clamp((d - 1) * 0.42, 0.04, 0.9);
+      this.controls.update(dt);
+      this.orbitPos.copy(this.camera.position);
+      this.orbitQuat.copy(this.camera.quaternion);
+      this.applyTilt(d);
+    }
     const [viewLon, viewLat] = vec3ToLonLat(this.orbitPos);
     this.detail.update(viewLon, viewLat, d, dt);
 
@@ -316,10 +334,64 @@ export class GlobeApp {
     cloudMat.opacity = THREE.MathUtils.smoothstep(d, 2.0, 2.6);
     this.clouds.visible = cloudMat.opacity > 0.01;
 
+    this.vehicles.update(this.camera, d, dt);
     this.things.update(this.camera, d, dt);
+    this.props.update(this.camera, viewLat, viewLon, d, dt);
     this.labels.update(this.camera, this.width, this.height, dt);
     this.renderer.render(this.scene, this.camera);
     this.checkQuality(dt);
+  }
+
+  // ---------------------------------------------------------------- ride along
+
+  ride(v: Vehicle) {
+    this.touched();
+    this.vehicles.riding = v;
+    this.controls.enabled = false;
+    this.controls.autoRotate = false;
+    this.rideCam.copy(this.camera.position);
+    this.rideLook.set(0, 0, 0);
+  }
+
+  stopRide() {
+    const v = this.vehicles.riding;
+    if (!v) return;
+    this.vehicles.riding = null;
+    this.controls.enabled = true;
+    // hand back to the normal globe view right above where we were
+    const [lon, lat] = vec3ToLonLat(v.pos);
+    this.orbitPos.copy(this.camera.position);
+    this.camera.lookAt(0, 0, 0);
+    this.orbitQuat.copy(this.camera.quaternion);
+    this.flyTo(lon, lat, 1.7);
+    this.events.onRideEnd?.();
+  }
+
+  /** Chase camera: just behind and above the vehicle, looking where it's going. */
+  private updateRide(dt: number): number {
+    const v = this.vehicles.riding!;
+    const sc = rideScale(v);
+    const plane = v.route.kind === 'plane';
+    const train = v.route.kind === 'train';
+    // a little lower and closer for trains, so the scenery feels big
+    const back = sc * (plane ? 9 : train ? 6 : 8);
+    const high = sc * (plane ? 3.2 : train ? 3.0 : 3.8);
+    const target = v.pos.clone().addScaledVector(v.fwd, -back).addScaledVector(v.up, high);
+    // never dip below the ground
+    const minR = v.pos.length() + sc * 0.8;
+    if (target.length() < minR) target.setLength(minR);
+    const look = v.pos.clone().addScaledVector(v.fwd, sc * 5).addScaledVector(v.up, sc * 0.6);
+    const k = 1 - Math.exp(-dt * 3.5);
+    if (this.rideLook.lengthSq() === 0) this.rideLook.copy(look);
+    this.rideCam.lerp(target, k);
+    this.rideLook.lerp(look, k);
+    this.camera.position.copy(this.rideCam);
+    this.camera.up.copy(v.up);
+    this.camera.lookAt(this.rideLook);
+    this.camera.up.set(0, 1, 0);
+    this.camera.updateMatrixWorld();
+    this.orbitPos.copy(this.camera.position);
+    return this.camera.position.length();
   }
 
   /**

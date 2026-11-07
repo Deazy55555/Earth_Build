@@ -73,7 +73,7 @@ export class ThingLayer {
     this.time += dt;
     const t = this.time;
     // keep things a similar size on screen as you zoom
-    const zoomScale = THREE.MathUtils.clamp((dist - 1) / 0.75, 0.25, 1.3);
+    const zoomScale = THREE.MathUtils.clamp((dist - 1) / 0.75, 0.06, 1.3);
     for (const th of this.things) {
       const want = dist < RANK_DIST[th.place.rank ?? 2];
       // is it on our side of the planet?

@@ -6,8 +6,9 @@ import { SEA } from './sea';
 import { DINOS } from './dinos';
 import { SPACE } from './space';
 import { BOATS } from './boats';
+import { VEHICLES } from './vehicles';
 
-export const BUILDERS: Record<string, (k: Kit) => void> = { ...LANDMARKS, ...ANIMALS, ...SEA, ...DINOS, ...SPACE, ...BOATS };
+export const BUILDERS: Record<string, (k: Kit) => void> = { ...LANDMARKS, ...ANIMALS, ...SEA, ...DINOS, ...SPACE, ...BOATS, ...VEHICLES };
 
 const cache = new Map<string, { group: THREE.Group; radius: number; center: THREE.Vector3 }>();
 

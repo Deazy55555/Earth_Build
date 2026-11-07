@@ -8,7 +8,8 @@
     "build": "node scripts/voice-index.mjs && tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "facts": "node scripts/build-facts.mjs",
-    "sentences": "tsx scripts/collect-sentences.ts > voice/sentences.json"
+    "sentences": "tsx scripts/collect-sentences.ts > voice/sentences.json",
+    "check-routes": "tsx scripts/check-routes.ts"
   },
   "dependencies": {
     "d3-geo": "^3.1.1",

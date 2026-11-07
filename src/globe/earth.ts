@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { DETAIL_GLSL, type DetailUniforms } from './detail';
 
 export const LAND_LIFT = 0.0018; // tiny islands sit just above the water
-export const LAND_HEIGHT = 0.011; // how much big land masses puff up
+export const LAND_HEIGHT = 0.02; // tallest mountains (Everest) — very exaggerated so kids can see them
 
 export interface Land {
   mesh: THREE.Mesh;
@@ -13,7 +13,7 @@ export interface Land {
  * The land shell: a sphere that's pushed outwards where there's land,
  * with the ocean cut away so the animated water sphere shows through.
  */
-export function createLand(color: THREE.Texture, mask: THREE.Texture, ids: THREE.Texture, detail: DetailUniforms, segments = 768): Land {
+export function createLand(color: THREE.Texture, heightMap: THREE.Texture, ids: THREE.Texture, detail: DetailUniforms, segments = 768): Land {
   const uniforms = {
     uIdMap: { value: ids },
     uSelected: { value: -1 },
@@ -23,11 +23,11 @@ export function createLand(color: THREE.Texture, mask: THREE.Texture, ids: THREE
   const mat = new THREE.MeshStandardMaterial({
     map: color,
     alphaTest: 0.5,
-    displacementMap: mask,
+    displacementMap: heightMap,
     displacementScale: LAND_HEIGHT,
     displacementBias: LAND_LIFT,
-    bumpMap: mask,
-    bumpScale: 2.5,
+    bumpMap: heightMap,
+    bumpScale: 3.5,
     roughness: 0.82,
     metalness: 0.0,
   });

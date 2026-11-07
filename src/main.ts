@@ -1,7 +1,9 @@
 import './style.css';
 import { GlobeApp } from './globe/GlobeApp';
+import { loadTopology } from './globe/mapTextures';
 import type { Country } from './data/countries';
-import { countryCard, capitalCard, waterCard, continentCard, thingCard, factsFor, type Card } from './data/cards';
+import { countryCard, capitalCard, waterCard, continentCard, thingCard, vehicleCard, factsFor, type Card } from './data/cards';
+import type { Vehicle } from './globe/vehicles';
 import { CONTINENTS } from './data/kid';
 import { say, stopSpeaking, speechEnabled, setSpeechEnabled } from './speech';
 
@@ -9,6 +11,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 
 const card = $('card');
 let current: Card | null = null;
+let currentVehicle: Vehicle | null = null;
 
 function showCard(c: Card) {
   current = c;
@@ -36,12 +39,14 @@ function showCard(c: Card) {
     }),
   );
   rows.scrollTop = 0;
+  $('card-ride').classList.toggle('hidden', !c.ride);
   card.classList.remove('hidden');
   say(c.intro);
 }
 
 function hideCard() {
   current = null;
+  currentVehicle = null;
   stopSpeaking();
   card.classList.add('hidden');
   app.select(null);
@@ -55,6 +60,15 @@ function openCountry(c: Country) {
 
 const app = new GlobeApp($<HTMLCanvasElement>('globe'), $('labels'), {
   onCountryTap: openCountry,
+  onVehicleTap(v) {
+    app.select(null);
+    showCard(vehicleCard(v.route));
+    currentVehicle = v;
+  },
+  onRideEnd() {
+    document.body.classList.remove('riding');
+    $('ride-hud').classList.add('hidden');
+  },
   onThingTap(place) {
     app.select(null);
     showCard(thingCard(place));
@@ -119,6 +133,31 @@ soundBtn.addEventListener('click', () => {
 });
 
 $('card-speak').addEventListener('click', () => current && say(current.full, true));
+
+// ---------------- ride along
+const SPEEDS = [1, 2, 4];
+let speedIdx = 0;
+$('card-ride').addEventListener('click', () => {
+  const v = currentVehicle;
+  if (!v) return;
+  card.classList.add('hidden');
+  current = null;
+  $('ride-title').textContent = `${v.route.emoji} ${v.route.name}`;
+  $('ride-hud').classList.remove('hidden');
+  document.body.classList.add('riding');
+  app.ride(v);
+});
+$('ride-speed').addEventListener('click', () => {
+  speedIdx = (speedIdx + 1) % SPEEDS.length;
+  app.vehicles.timeScale = SPEEDS[speedIdx];
+  $('ride-speed').textContent = `×${SPEEDS[speedIdx]}`;
+});
+$('ride-off').addEventListener('click', () => {
+  speedIdx = 0;
+  app.vehicles.timeScale = 1;
+  $('ride-speed').textContent = '×1';
+  app.stopRide();
+});
 $('card-close').addEventListener('click', hideCard);
 
 // Block iOS Safari's pinch-to-zoom-the-page so pinches go to the globe.
@@ -128,8 +167,8 @@ document.addEventListener('dblclick', (e) => e.preventDefault());
 // Let the loading screen paint before the heavy build. (A plain timer, not
 // requestAnimationFrame, so the build still happens if the app is opened in the background.)
 setTimeout(async () => {
-  await document.fonts?.ready;
-  app.build();
+  const [topo] = await Promise.all([loadTopology(`${import.meta.env.BASE_URL}topology.png`), document.fonts?.ready]);
+  app.build(topo);
   app.start();
   setTimeout(() => $('loading').classList.add('done'), 50);
 }, 60);

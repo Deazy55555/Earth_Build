@@ -1,5 +1,6 @@
 import factsJson from './facts.json';
 import { KIND_LABEL, type Place } from './places';
+import { KIND_NAME, type Route } from './routes';
 import type { Country } from './countries';
 import {
   GREETINGS,
@@ -50,6 +51,8 @@ export interface Card {
   intro: string;
   /** everything, read when the speaker button is tapped */
   full: string;
+  /** show a "Ride along!" button */
+  ride?: boolean;
 }
 
 // ------------------------------------------------------------- helpers
@@ -269,5 +272,35 @@ export function thingCard(p: Place): Card {
     rows,
     intro: intro.charAt(0).toUpperCase() + intro.slice(1),
     full: say.join(' '),
+  };
+}
+
+// ------------------------------------------------------------- planes, ships and trains
+
+export function vehicleCard(r: Route): Card {
+  const article = /^[aeiou]/i.test(r.name) ? 'an' : 'a';
+  const call = r.call ?? (r.kind === 'train' ? `the ${r.name}` : `${article} ${r.name.toLowerCase()}`);
+  const isAre = r.kind === 'balloon' ? 'These are' : 'This is';
+  const verb = r.kind === 'plane' ? 'flies' : r.kind === 'train' ? 'travels' : r.kind === 'balloon' ? 'float' : 'sails';
+  const it = r.kind === 'balloon' ? 'They' : 'It';
+  const where =
+    r.kind === 'balloon'
+      ? `${it} ${verb} over ${r.from}.`
+      : r.loop
+        ? `${it} ${verb} around ${r.to}, near ${r.from}.`
+        : `${it} ${verb} from ${r.from} to ${r.to}.`;
+  const rows: CardRow[] = [
+    { icon: '🧭', label: r.kind === 'balloon' || r.loop ? 'Where' : 'Route', text: r.kind === 'balloon' ? r.from : r.loop ? `Around ${r.to}` : `${r.from} → ${r.to}` },
+    { icon: '⭐', label: 'Did you know?', text: r.fact },
+  ];
+  const intro = `${isAre} ${call}!`;
+  return {
+    emoji: r.emoji,
+    title: r.name,
+    subtitle: KIND_NAME[r.kind],
+    rows,
+    intro: intro.charAt(0).toUpperCase() + intro.slice(1),
+    full: `${intro.charAt(0).toUpperCase() + intro.slice(1)} ${where} Did you know? ${r.fact}`,
+    ride: true,
   };
 }

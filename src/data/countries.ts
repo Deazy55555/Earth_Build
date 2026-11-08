@@ -99,12 +99,21 @@ export function labelPoint(f: Feature<Geometry>): [number, number] {
 
 let cache: Country[] | null = null;
 
+let adjCache: number[][] = [];
+
+/** Countries that share a border with this one. */
+export function neighborsOf(c: Country): Country[] {
+  const list = loadCountries();
+  return (adjCache[c.index - 1] ?? []).map((j) => list[j]).filter(Boolean);
+}
+
 export function loadCountries(): Country[] {
   if (cache) return cache;
   const topo = worldData as unknown as Topology<{ countries: GeometryCollection<{ name: string }> }>;
   const geoms = topo.objects.countries.geometries;
   const fc = feature(topo, topo.objects.countries);
   const adj = neighbors(geoms as never);
+  adjCache = adj;
 
   // Greedy colouring so neighbouring countries never share a colour.
   const colorIdx: number[] = new Array(geoms.length).fill(-1);

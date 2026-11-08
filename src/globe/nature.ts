@@ -94,6 +94,7 @@ function rasterize(kind: string, w: number, h: number, blur: number): Float32Arr
     ctx.fill();
   }
   const px = ctx.getImageData(0, 0, w, h).data;
+  canvas.width = canvas.height = 0; // give the memory back straight away (iPads have little)
   let a: Float32Array = new Float32Array(w * h);
   for (let i = 0; i < a.length; i++) a[i] = px[i * 4] / 255;
   a = boxBlurWrap(a, w, h, blur);

@@ -11,6 +11,7 @@ import { CONTINENTS, WATERS, WATER_LABELS } from '../data/kid';
 import { waterAt } from '../data/oceans';
 import { say, stopSpeaking } from '../speech';
 import { loadStates, stateAt, stateNear, USA_ID, type UsState } from '../data/states';
+import { hintsFor, stateHints } from './content';
 import { SAY, sayFind, sayFound, sayWrong, sayShow, sayEnd, saySoFar, targets, questions, countryCall, type Target, type Question } from './content';
 import {
   progress,
@@ -71,6 +72,7 @@ export class Games {
     list: Target[];
     i: number;
     tries: number;
+    hints: number;
     closer: boolean;
     stars: boolean[];
     busy: boolean;
@@ -81,7 +83,7 @@ export class Games {
     right: boolean[];
     busy: boolean;
   } | null = null;
-  private states: { target: UsState; tries: number; found: Set<string>; busy: boolean } | null = null;
+  private states: { target: UsState; tries: number; hints: number; found: Set<string>; busy: boolean } | null = null;
   private lastGame: 'hunt' | 'quiz' | 'states' = 'hunt';
   private bookTab = 'animals';
 
@@ -145,6 +147,7 @@ export class Games {
     $('start-quiz').addEventListener('click', () => this.startQuiz());
     $('start-states').addEventListener('click', () => this.startStates());
     $('hunt-quit').addEventListener('click', () => (this.states ? this.endStates(false) : this.endHunt(false)));
+    $('hunt-hint').addEventListener('click', () => this.giveHint());
     $('hunt-say').addEventListener('click', () => {
       if (this.hunt) say(sayFind(this.hunt.list[this.hunt.i].call), true);
       if (this.states) say(sayFind(this.states.target.name), true);
@@ -200,6 +203,7 @@ export class Games {
       list: this.pickTargets(),
       i: 0,
       tries: 0,
+      hints: 0,
       closer: false,
       stars: [],
       busy: false,
@@ -215,7 +219,9 @@ export class Games {
     const h = this.hunt!;
     const t = h.list[h.i];
     h.tries = 0;
+    h.hints = 0;
     h.closer = false;
+    this.resetHints();
     h.busy = false;
     this.app.select(null);
     $('hunt-emoji').textContent = t.emoji;
@@ -300,7 +306,7 @@ export class Games {
     sfxYes();
     confetti(90);
     say(sayFound(t.call));
-    h.stars.push(h.tries < 3);
+    h.stars.push(h.tries + h.hints < 3); // a star for finding it without much help
     this.paintHuntStars();
     if (t.kind === 'country') {
       this.app.select(t.country);
@@ -325,9 +331,9 @@ export class Games {
       return this.nextTarget();
     }
     const oops = tapped ? sayWrong(tapped) : '';
-    if (h.tries === 2) {
-      say(`${oops} ${SAY.hint}`.trim());
-      this.point(t, false);
+    if (h.tries === 2 && h.hints === 0) {
+      say(`${oops} ${SAY.tapHint}`.trim());
+      this.nudgeHint();
     } else if (oops) say(oops);
   }
 
@@ -360,7 +366,7 @@ export class Games {
     this.lastGame = 'states';
     if (progress.states.length >= 50) clearStates();
     const found = new Set(progress.states);
-    this.states = { target: loadStates()[0], tries: 0, found, busy: false };
+    this.states = { target: loadStates()[0], tries: 0, hints: 0, found, busy: false };
     this.app.labels.hidden = true;
     this.app.markStates(found);
     document.body.classList.add('hunting');
@@ -376,7 +382,9 @@ export class Games {
     const pool = left.length ? left : loadStates().filter((s) => !g.found.has(s.abbr));
     g.target = pool[Math.floor(Math.random() * pool.length)];
     g.tries = 0;
+    g.hints = 0;
     g.busy = false;
+    this.resetHints();
     this.app.selectState(null);
     $('hunt-emoji').textContent = g.target.emoji;
     $('hunt-name').textContent = g.target.name;
@@ -445,9 +453,9 @@ export class Games {
       this.app.flyTo(-97, 39, 2.15);
       return this.nextState(); // it comes back later
     }
-    if (g.tries === 2) {
-      say(`${sayWrong(tapped)} ${SAY.hint}`);
-      this.showState(t);
+    if (g.tries === 2 && g.hints === 0) {
+      say(`${sayWrong(tapped)} ${SAY.tapHint}`);
+      this.nudgeHint();
     } else say(sayWrong(tapped));
   }
 
@@ -466,6 +474,52 @@ export class Games {
     sfxFanfare();
     confetti(260);
     say(SAY.statesAll);
+  }
+
+  // ================================================================ hints
+
+  private resetHints() {
+    $('hunt-tip').classList.add('hidden');
+    $('hint-left').textContent = '3';
+    $('hunt-hint').classList.remove('used-up', 'wiggle');
+  }
+
+  /** Make the light bulb wiggle so they know help is there. */
+  private nudgeHint() {
+    const b = $('hunt-hint');
+    b.classList.remove('wiggle');
+    void b.offsetWidth;
+    b.classList.add('wiggle');
+  }
+
+  /** The light bulb: two word clues, then the globe flies there. */
+  private giveHint() {
+    const h = this.hunt;
+    const g = this.states;
+    if ((h && h.busy) || (g && g.busy) || (!h && !g)) return;
+    const used = Math.min(3, (h ? h.hints : g!.hints) + 1);
+    if (h) h.hints = used;
+    if (g) g.hints = used;
+    const words = h ? hintsFor(h.list[h.i]) : stateHints(g!.target);
+    const btn = $('hunt-hint');
+    btn.classList.remove('wiggle');
+    $('hint-left').textContent = String(3 - used);
+    btn.classList.toggle('used-up', used >= 3);
+    const tip = $('hunt-tip');
+    if (used <= 2) {
+      const text = words[used - 1];
+      tip.textContent = `💡 ${text}`;
+      say(`${SAY.hintStart} ${text}`);
+    } else {
+      tip.textContent = "💡 It's right around here!";
+      say(SAY.hint);
+      if (h) this.point(h.list[h.i], false);
+      else this.showState(g!.target);
+    }
+    tip.classList.remove('hidden');
+    tip.style.animation = 'none';
+    void tip.offsetWidth;
+    tip.style.animation = '';
   }
 
   // ================================================================ quiz

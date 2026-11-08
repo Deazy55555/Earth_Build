@@ -112,12 +112,25 @@ const LABEL_AT: Record<string, [number, number]> = {
   AK: [-152, 64.5],
 };
 
+let stateAdj: Record<string, number[]> = {};
+
+/** States that share a border with this one, biggest first. */
+export function stateNeighbors(s: UsState): UsState[] {
+  const list = loadStates();
+  const geoms = statesTopology().objects.states.geometries;
+  return (stateAdj[s.fips] ?? [])
+    .map((j) => list.find((x) => x.fips === geoms[j].id))
+    .filter((x): x is UsState => !!x)
+    .sort((a, b) => b.area - a.area);
+}
+
 export function loadStates(): UsState[] {
   if (cache) return cache;
   const topo = statesTopology();
   const geoms = topo.objects.states.geometries;
   const fc = feature(topo, topo.objects.states);
   const adj = neighbors(geoms as never);
+  const byFips: Record<string, number[]> = {};
   const colorIdx: number[] = new Array(geoms.length).fill(-1);
   const order = geoms.map((_, i) => i).sort((a, b) => adj[b].length - adj[a].length);
   for (const i of order) {
@@ -126,6 +139,8 @@ export function loadStates(): UsState[] {
     for (let k = 0; k < STATE_COLORS.length && used.has(c); k++) c = (c + 1) % STATE_COLORS.length;
     colorIdx[i] = c;
   }
+  geoms.forEach((g, i) => (byFips[g.id as string] = adj[i]));
+  stateAdj = byFips;
   cache = fc.features
     .map((f, i) => {
       const fips = geoms[i].id as string;

@@ -254,7 +254,9 @@ export async function loadTopology(url: string): Promise<ImageData | null> {
     });
     const [c, ctx] = makeCanvas(img.width, img.height);
     ctx.drawImage(img, 0, 0);
-    return ctx.getImageData(0, 0, c.width, c.height);
+    const data = ctx.getImageData(0, 0, c.width, c.height);
+    c.width = c.height = 0; // free it (iPads have little canvas memory)
+    return data;
   } catch {
     return null;
   }

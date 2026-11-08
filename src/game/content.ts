@@ -2,11 +2,12 @@
  * Game content: what to find, quiz questions and every phrase the games say.
  * Kept free of anything browser-only so the voice recorder can list all of it.
  */
-import { loadCountries, type Country } from '../data/countries';
+import { loadCountries, neighborsOf, countryAt, type Country } from '../data/countries';
+import { geoDistance } from 'd3-geo';
 import { factsFor, nm, callIt } from '../data/cards';
 import { PLACES, type Place } from '../data/places';
-import { WATERS, CONTINENTS } from '../data/kid';
-import { loadStates } from '../data/states';
+import { WATERS, CONTINENTS, WATER_LABELS } from '../data/kid';
+import { loadStates, stateAt, stateNeighbors, USA_ID, type UsState } from '../data/states';
 
 // ------------------------------------------------------------- phrases
 
@@ -15,6 +16,8 @@ export const SAY = {
   quizStart: "Let's do a quiz!",
   hint: "Here's a hint! It's right around here.",
   closer: "You're close! Now look for it up close.",
+  hintStart: "Here's a hint!",
+  tapHint: 'Tap the light bulb for a hint!',
   next: 'Here comes the next one!',
   newSticker: 'You got a new sticker!',
   newTrophy: 'Wow! You won a trophy!',
@@ -245,10 +248,135 @@ export function allGameSentences(): string[] {
   for (const p of PLACES) out.add(sayFind(callIt(p)));
   for (const c of loadCountries()) out.add(sayFind(countryCall(c)));
   for (const q of questions()) [q.text, q.reveal].forEach((s) => out.add(s));
+  allHintSentences().forEach((h) => out.add(h));
   // the 50 States game
   [SAY.statesStart, SAY.statesMore, SAY.statesAll].forEach((s) => out.add(s));
   for (let n = 1; n < 50; n++) out.add(saySoFar(n));
   for (const st of loadStates()) [sayFind(st.name), sayFound(st.name), sayShow(st.name), sayWrong(st.name)].forEach((s) => out.add(s));
   for (let total = 5; total <= 6; total++) for (let s = 0; s <= total; s++) out.add(sayEnd(s, total));
+  return [...out];
+}
+
+// ------------------------------------------------------------------ hints
+
+const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
+function nearState(lon: number, lat: number): UsState | null {
+  for (const r of [0.3, 0.6, 1.0])
+    for (let a = 0; a < 8; a++) {
+      const t = (a / 8) * Math.PI * 2;
+      const hit = stateAt(lon + Math.cos(t) * r * 1.3, lat + Math.sin(t) * r);
+      if (hit) return hit;
+    }
+  return null;
+}
+
+const contOf = (c: Country) => {
+  const k = factsFor(c)?.continent;
+  return k === 'Oceania' ? 'Australia' : k;
+};
+const inContinent = (c: Country): string | null => {
+  const k = contOf(c);
+  if (!k || k === 'Antarctica') return null;
+  if (k === 'Australia' && c.id !== '036') return "It's near Australia.";
+  return `It's in ${k}.`;
+};
+/** Well-known countries closest to a spot. */
+function nearest(lon: number, lat: number, n: number, skip?: Country): Country[] {
+  const all = loadCountries().filter((c) => c !== skip && c.id !== '010');
+  const known = all.filter((c) => c.area > 0.003);
+  const d = (c: Country) => geoDistance([lon, lat], c.centroid);
+  return (known.length >= n ? known : all).sort((a, b) => d(a) - d(b)).slice(0, n);
+}
+const waterCall = (id: string) => (WATERS[id] ? `the ${WATERS[id].name}` : 'the ocean');
+
+/** Rough "which ocean is this?" (works without the map loaded, so the voice lines match). */
+function oceanAt(lon: number, lat: number): string {
+  if (lat > 66) return 'arctic';
+  if (lat < -58) return 'southern';
+  if (lat > 30 && lat < 46 && lon > -5 && lon < 36) return 'mediterranean';
+  if (lon >= 20 && lon < 120 && lat < 30) return 'indian';
+  if ((lon > -70 && lon < 20) || (lat > 8 && lat < 32 && lon > -100 && lon <= -70) || (lat >= 32 && lon > -82 && lon <= -70)) return 'atlantic';
+  return 'pacific';
+}
+
+/** The country at a spot, or just along the coast from it. */
+function countryNear(lon: number, lat: number): Country | null {
+  const c = countryAt(lon, lat);
+  if (c) return c;
+  for (const r of [0.3, 0.6, 1.0])
+    for (let a = 0; a < 8; a++) {
+      const t = (a / 8) * Math.PI * 2;
+      const hit = countryAt(lon + (Math.cos(t) * r) / Math.max(0.3, Math.cos((lat * Math.PI) / 180)), lat + Math.sin(t) * r);
+      if (hit) return hit;
+    }
+  return null;
+}
+
+/** "the north part", etc. — for big countries where the name alone isn't much help. */
+function partOf(c: Country, lon: number, lat: number): string {
+  const dx = ((lon - c.centroid[0] + 540) % 360) - 180;
+  const dy = lat - c.centroid[1];
+  const ew = dx * Math.cos((lat * Math.PI) / 180);
+  if (c.id === '010') return "It's at the very bottom of the world.";
+  if (Math.hypot(ew, dy) < 4) return `It's right in the middle of ${countryCall(c)}.`;
+  const ns = dy > 0 ? 'north' : 'south';
+  const we = ew > 0 ? 'east' : 'west';
+  const big = Math.max(Math.abs(ew), Math.abs(dy));
+  const small = Math.min(Math.abs(ew), Math.abs(dy));
+  const dir = small > big * 0.5 ? `${ns}${we}` : Math.abs(ew) > Math.abs(dy) ? we : ns;
+  return `It's in the ${dir} part of ${countryCall(c)}.`;
+}
+
+/** Two word hints for a Where in the World? target (the third hint flies there). */
+export function hintsFor(t: Target): [string, string] {
+  switch (t.kind) {
+    case 'country': {
+      const c = t.country;
+      const nb = neighborsOf(c).sort((a, b) => b.area - a.area);
+      const near = nb.length ? `It's next to ${countryCall(nb[0])}.` : `It's an island near ${countryCall(nearest(c.centroid[0], c.centroid[1], 1, c)[0])}.`;
+      return [inContinent(c) ?? near, inContinent(c) ? near : `Look for its flag, ${c.flag}.`];
+    }
+    case 'water': {
+      const spot = WATER_LABELS.find((w) => w.id === t.id);
+      const [a, b] = spot ? nearest(spot.lon, spot.lat, 2) : [];
+      if (!a) return ["It's in the blue water.", 'Look for lots of blue water.'];
+      return [`It's near ${countryCall(a)}.`, `It's also near ${countryCall(b)}.`];
+    }
+    case 'continent': {
+      if (t.id === 'Antarctica') return ["It's at the very bottom of the world.", "It's covered in ice and snow."];
+      const big = loadCountries()
+        .filter((c) => contOf(c) === t.id)
+        .sort((a, b) => b.area - a.area);
+      return [`${cap(countryCall(big[0]))} is part of it.`, `${cap(countryCall(big[1] ?? big[0]))} is part of it too.`];
+    }
+    case 'place': {
+      const { lon, lat } = t.place;
+      const sea = t.place.atSea || ['sea'].includes(t.place.kind);
+      const c = sea ? null : countryNear(lon, lat);
+      if (c) {
+        const st = c.id === USA_ID ? (stateAt(lon, lat) ?? nearState(lon, lat)) : null;
+        // French Guiana is part of France, but it's in South America
+        const first = c.id === '250' && lon < -25 ? "It's in South America." : (inContinent(c) ?? `It's in ${countryCall(c)}.`);
+        const second = st ? `It's in the state of ${st.name}.` : c.area > 0.1 ? partOf(c, lon, lat) : `It's in ${countryCall(c)}.`;
+        return [first, second];
+      }
+      return [`It's in ${waterCall(oceanAt(lon, lat))}.`, `It's near ${countryCall(nearest(lon, lat, 1)[0])}.`];
+    }
+  }
+}
+
+/** Two word hints for the 50 States game. */
+export function stateHints(st: UsState): [string, string] {
+  if (st.abbr === 'AK') return ["It's way up north, next to Canada.", "It's the biggest state of all!"];
+  if (st.abbr === 'HI') return ["It's far out in the Pacific Ocean.", "It's a group of islands."];
+  const nb = stateNeighbors(st);
+  const second = nb[1] ? `It's also next to ${nb[1].name}.` : "It's way up in the top right corner of the country.";
+  return [`It's next to ${nb[0].name}.`, second];
+}
+
+export function allHintSentences(): string[] {
+  const out = new Set<string>([SAY.hintStart, SAY.tapHint]);
+  for (const t of [...targets(1), ...targets(2)]) hintsFor(t).forEach((h) => out.add(h));
+  for (const st of loadStates()) stateHints(st).forEach((h) => out.add(h));
   return [...out];
 }

@@ -57,6 +57,7 @@ export class DetailPatch {
   private texture: THREE.CanvasTexture | null = null;
   private win = { lon: 0, lat: 0, lonSpan: 0, latSpan: 0 };
   private pending = false;
+  private broken = false;
   private stateLines: ReturnType<typeof mesh> | null = null;
 
   constructor(private countries: Country[], private maxAnisotropy: number, private terrain: Terrain) {}
@@ -101,7 +102,8 @@ export class DetailPatch {
   update(lon: number, lat: number, dist: number, dt: number) {
     const on = dist < 1.8;
     const u = this.uniforms;
-    u.uDetailOn.value = THREE.MathUtils.damp(u.uDetailOn.value, on && this.texture ? 1 : 0, 6, dt);
+    u.uDetailOn.value = THREE.MathUtils.damp(u.uDetailOn.value, on && this.texture && !this.broken ? 1 : 0, 6, dt);
+    if (this.broken) return;
     if (!on) return;
     if (!this.features) {
       if (!this.loading) this.load();
@@ -117,7 +119,14 @@ export class DetailPatch {
       this.pending = true;
       // draw on the next tick so a busy frame isn't made longer
       setTimeout(() => {
-        this.draw(lon, THREE.MathUtils.clamp(lat, -80 + latSpan / 2, 80 - latSpan / 2), lonSpan, latSpan * 1.25);
+        try {
+          this.draw(lon, THREE.MathUtils.clamp(lat, -80 + latSpan / 2, 80 - latSpan / 2), lonSpan, latSpan * 1.25);
+        } catch (e) {
+          // never leave a half-drawn close-up on the globe: use the normal map instead
+          console.warn('close-up map failed', e);
+          this.broken = true;
+          this.uniforms.uDetailOn.value = 0;
+        }
         this.pending = false;
       }, 0);
     }
@@ -178,6 +187,11 @@ export class DetailPatch {
     const latTop = latC + latSpan / 2;
     const sy = ((90 - latTop) / 180) * n.h;
     const sh = (latSpan / 180) * n.h;
+    // solid ground first: if the natural colours fail to draw (iPads can be
+    // short on canvas memory) the land must never turn see-through, or the
+    // ocean underneath shows up as a big blue patch
+    ctx.fillStyle = '#8fbf5f';
+    ctx.fillRect(0, 0, W, H);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     const l0 = lonC - lonSpan / 2;
@@ -186,7 +200,15 @@ export class DetailPatch {
       const a = Math.max(l0, -180 + k);
       const b = Math.min(l1, 180 + k);
       if (b <= a) continue;
-      ctx.drawImage(n.canvas, ((a - k + 180) / 360) * n.w, sy, ((b - a) / 360) * n.w, sh, (a - l0) * ppd, 0, (b - a) * ppd, H);
+      // keep the source box inside the picture (Safari draws nothing otherwise)
+      const sx = Math.max(0, ((a - k + 180) / 360) * n.w);
+      const sw = Math.min(n.w - sx, ((b - a) / 360) * n.w);
+      const y0 = Math.max(0, sy);
+      const y1 = Math.min(n.h, sy + sh);
+      if (sw <= 0 || y1 <= y0) continue;
+      const dy0 = ((y0 - sy) / sh) * H;
+      const dy1 = ((y1 - sy) / sh) * H;
+      ctx.drawImage(n.canvas, sx, y0, sw, y1 - y0, (a - l0) * ppd, dy0, (b - a) * ppd, dy1 - dy0);
     }
     // a light wash of each country's toy colour so you can still tell them apart
     ctx.globalAlpha = 0.24;
